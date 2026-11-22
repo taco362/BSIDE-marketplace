@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Hardhat 프로젝트는 별도 package.json과 설정으로 관리한다.
+    "contracts/**",
   ]),
 ]);
 

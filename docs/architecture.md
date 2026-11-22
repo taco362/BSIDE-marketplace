@@ -66,7 +66,8 @@ b-side/
 │  ├─ tx/                       # 트랜잭션 전송 함수 (client)
 │  ├─ ipfs/pinata.ts            # Pinata 업로드 (server-only, Phase 2)
 │  └─ config/sampleCids.ts      # Phase 1 테스트용 샘플 CID
-├─ contracts/                   # Hardhat 프로젝트 (별도 package.json)
+├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
+│  ├─ hardhat.config.ts         # solc 0.8.28, sepolia 네트워크 (configVariable)
 │  ├─ contracts/BSideNFT.sol
 │  ├─ contracts/BSideEscrow.sol
 │  ├─ contracts/test/           # 테스트용 공격·거부 컨트랙트
@@ -315,11 +316,12 @@ Phase 1 테스트용 CID:
 | `.env.local` | `SEPOLIA_RPC_URL` | 서버 조회용 RPC | 서버 전용 |
 | `.env.local` | `PINATA_JWT` | IPFS 업로드 | 서버 전용 |
 | `.env.local` | `DATA_SOURCE` | 조회 구현체 선택 (`chain`) | 서버 전용 |
-| `contracts/.env` | `DEPLOYER_PRIVATE_KEY`, `SEPOLIA_RPC_URL` | 컨트랙트 배포 | 로컬 전용 |
+| Hardhat keystore (`contracts/`) | `SEPOLIA_PRIVATE_KEY`, `SEPOLIA_RPC_URL` | 컨트랙트 배포 | 로컬 전용 (암호화 저장) |
 
 - `NEXT_PUBLIC_` 접두사가 붙은 변수만 브라우저 번들에 포함된다. 비밀값에는 붙이지 않는다.
 - Pinata와 RPC를 다루는 모듈은 `import 'server-only'`로 클라이언트에서 가져올 수 없게 한다.
-- `.env*` 파일은 `.gitignore`에 포함하고, 저장소에는 값 없는 `.env.example`만 커밋한다.
+- `.env*` 파일은 `.gitignore`에 포함하고, 저장소에는 값 없는 루트 `.env.example`만 커밋한다.
+- 컨트랙트 배포용 비밀값은 평문 `.env` 파일 대신 Hardhat keystore에 암호화해 저장한다 (`npx hardhat keystore set SEPOLIA_PRIVATE_KEY`). `hardhat.config.ts`는 `configVariable`로 값을 참조하며, Sepolia 네트워크를 사용할 때만 값을 요구하므로 로컬 컴파일·테스트에는 비밀값이 필요 없다. 같은 이름의 환경 변수가 있으면 그 값을 사용할 수도 있다.
 - 컨트랙트 주소와 ABI는 비밀값이 아니므로 `lib/contracts/`에 저장한다.
 
 ## 8. 보안 고려 사항과 알려진 한계
