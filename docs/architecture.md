@@ -42,30 +42,56 @@
 ## 3. 디렉터리 구조
 
 기존 Next.js 프로젝트 구조(`app/`)를 유지하고, 컨트랙트는 `contracts/`에 별도 Hardhat 프로젝트로 둔다.
+프론트엔드는 유지보수를 위해 **라우트(app) / UI 컴포넌트(components) / 훅(hooks) / 로직(lib)** 으로 나눈다.
+
+> 아래 트리는 **목표 구조**다. 폴더와 파일을 미리 만들지 않고, 해당 기능을 구현하는 단계에서 필요한 것만 만든다. 컴포넌트 이름은 예시이며 실제 구현 시 정한다.
 
 ```
 b-side/
-├─ app/
-│  ├─ layout.tsx                # WalletProvider로 감싼다
-│  ├─ page.tsx                  # 판매 중 상품 목록
-│  ├─ listings/[id]/page.tsx    # 거래 상세 + 구매/승인/환불/분쟁 버튼
-│  ├─ tokens/[tokenId]/page.tsx # NFT 정보, 정책, 거래 이력
-│  ├─ mint/page.tsx             # 아티스트 NFT 발행
-│  ├─ sell/page.tsx             # 보유 NFT 선택 → 판매 등록
-│  ├─ my/page.tsx               # 내 NFT, 판매·구매 거래, 출금
-│  ├─ admin/page.tsx            # 아티스트 등록/회수, 분쟁 중재
-│  └─ api/ipfs/route.ts         # Pinata 업로드 (Phase 2)
+├─ app/                           # 라우트: 데이터를 불러와 컴포넌트를 조립만 한다
+│  ├─ layout.tsx                  # WalletProvider로 감싼다
+│  ├─ page.tsx                    # 판매 중 상품 목록
+│  ├─ listings/[id]/
+│  │  ├─ page.tsx                 # 거래 상세 (조회 + 조립)
+│  │  └─ _components/             # 이 페이지 전용 (예: ListingActions — 상태·역할별 버튼)
+│  ├─ tokens/[tokenId]/page.tsx   # NFT 정보, 정책, 거래 이력
+│  ├─ mint/                       # 아티스트 NFT 발행 (page.tsx + _components/MintForm)
+│  ├─ sell/                       # 보유 NFT 선택 → 판매 등록 (page.tsx + _components/)
+│  ├─ my/page.tsx                 # 내 NFT, 판매·구매 거래, 출금
+│  ├─ admin/                      # 아티스트 등록/회수, 분쟁 중재 (page.tsx + _components/)
+│  └─ api/ipfs/route.ts           # Pinata 업로드 (Phase 2)
+├─ components/                    # 여러 페이지에서 재사용하는 UI
+│  ├─ ui/                         # 도메인과 무관한 기본 요소 (Button, Card, Badge, Spinner)
+│  ├─ wallet/                     # ConnectButton, NetworkGuard
+│  ├─ listing/                    # ListingCard, ListingStatusBadge, PriceTag
+│  ├─ token/                      # TokenSummary, PolicyBadge, TradeTimeline
+│  └─ tx/                         # TxStatus (서명 대기·전송·성공·실패 표시)
+├─ hooks/                         # 클라이언트 상태 훅
+│  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (WalletProvider context)
+│  └─ useTx.ts                    # 트랜잭션 진행 상태 관리, 성공 시 router.refresh()
 ├─ lib/
-│  ├─ contracts/                # 배포 스크립트가 생성: ABI, 주소, 배포 블록, chainId
-│  ├─ data/
-│  │  ├─ types.ts               # 도메인 타입 (Listing, TokenInfo, TradeEvent)
-│  │  ├─ reader.ts              # MarketReader 인터페이스
-│  │  ├─ chain/chainReader.ts   # 블록체인 조회 구현체 (server-only)
-│  │  └─ index.ts               # getMarketReader(): DATA_SOURCE로 구현체 선택
-│  ├─ wallet/                   # 지갑 연결, 네트워크 확인 (client)
-│  ├─ tx/                       # 트랜잭션 전송 함수 (client)
-│  ├─ ipfs/pinata.ts            # Pinata 업로드 (server-only, Phase 2)
-│  └─ config/sampleCids.ts      # Phase 1 테스트용 샘플 CID
+│  ├─ contracts/                  # ★ 컨트랙트 주소·ABI의 단일 출처 (Provider/Signer는 만들지 않음)
+│  │  ├─ abi/                     # 배포 스크립트가 생성
+│  │  ├─ deployment.json          # chainId, 주소, 배포 블록 (배포 스크립트가 생성)
+│  │  └─ index.ts                 # getNftContract(runner), getEscrowContract(runner) — runner는 호출하는 쪽이 전달
+│  ├─ domain/                     # 순수 타입·함수 (서버·클라이언트 공용, 외부 호출 없음)
+│  │  ├─ types.ts                 # Listing, TokenInfo, TradeEvent, Policy, Status
+│  │  ├─ policy.ts                # 정책 표시 이름, 가격 상한 미리 계산 (화면 안내용)
+│  │  └─ format.ts                # wei↔ETH 변환, 주소 축약
+│  ├─ data/                       # 읽기 전용
+│  │  ├─ reader.ts                # MarketReader 인터페이스
+│  │  ├─ chain/provider.ts        # 서버 조회용 JsonRpcProvider (server-only, RPC_URL 사용)
+│  │  ├─ chain/chainReader.ts     # 블록체인 조회 구현체 (server-only)
+│  │  └─ index.ts                 # getMarketReader(): chainReader 반환 (구현체 선택 로직 없음)
+│  ├─ tx/                         # 쓰기 전용 (client), 컨트랙트별로 분리
+│  │  ├─ nft.ts                   # mint, approve, 아티스트 등록·회수
+│  │  └─ escrow.ts                # list, cancel, buy, confirm, claim, refund, dispute, resolve, withdraw
+│  ├─ wallet/signer.ts            # 트랜잭션 서명용 BrowserProvider(MetaMask)·Signer, 네트워크 확인 (client)
+│  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
+│  └─ config/
+│     ├─ ipfs.ts                  # 공개 IPFS 게이트웨이 주소, CID → URL 변환
+│     └─ sampleCids.ts            # Phase 1 테스트용 샘플 CID (실제 업로드된 값)
+├─ samples/ipfs/                  # 테스트용 샘플 원본 (메타데이터·상태 기록 JSON, 이미지)
 ├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
 │  ├─ hardhat.config.ts         # solc 0.8.28, sepolia 네트워크 (configVariable)
 │  ├─ contracts/BSideNFT.sol
@@ -77,6 +103,35 @@ b-side/
 ```
 
 > Next.js 16은 이전 버전과 API가 다를 수 있다. Next.js 코드를 작성하기 전에 `node_modules/next/dist/docs/`의 해당 문서를 확인한다(AGENTS.md).
+
+### 3.1 모듈 규칙
+
+의존 방향 (화살표 방향으로만 import한다):
+```
+app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ lib/contracts
+ │            │                                      └──▶ lib/domain
+ └──▶ lib/data (서버) ──▶ lib/contracts, lib/domain
+```
+
+- **페이지(app)는 조립만 한다**: 데이터를 불러오고 컴포넌트를 배치한다. 버튼 동작, 폼, 상태 표시는 컴포넌트로 분리한다.
+- **컴포넌트 위치**: 한 페이지에서만 쓰면 그 라우트의 `_components/`에 두고, 두 곳 이상에서 쓰면 `components/`로 옮긴다. `_` 접두사 폴더는 Next.js 라우트에서 제외된다(private folder).
+- **`"use client"`는 상호작용이 필요한 컴포넌트에만** 붙인다. 목록·상세 같은 조회 화면의 바깥 틀은 Server Component로 둔다.
+- **컴포넌트는 컨트랙트를 직접 호출하지 않는다**: 쓰기는 `hooks/useTx` → `lib/tx/*`를 거치고, 읽기는 페이지가 `lib/data`로 받아 props로 넘긴다.
+- **lib/contracts가 주소·ABI의 단일 출처다**: `lib/data`와 `lib/tx`는 주소나 ABI를 직접 갖지 않고 `lib/contracts`의 함수로 컨트랙트 객체를 얻는다.
+- **lib/domain은 외부에 의존하지 않는다**: 타입과 순수 함수만 두며, 서버·클라이언트 양쪽에서 쓴다. `policy.ts`의 가격 상한 계산은 화면 안내용이고, 최종 검증은 항상 컨트랙트가 한다. 계산 규칙은 4.2와 같아야 한다.
+- **server-only 모듈**(`lib/data/chain`, `lib/ipfs`)은 클라이언트 컴포넌트에서 import하지 않는다.
+- **필요할 때 만든다**: 폴더, 컴포넌트, 추상화는 실제로 쓰는 기능을 구현할 때 추가한다. 아직 쓰지 않는 선택 로직이나 빈 파일은 만들지 않는다.
+
+### 3.2 Provider와 Signer 분리
+
+| 용도 | 객체 | 위치 | 실행 환경 | 연결 대상 |
+|---|---|---|---|---|
+| 서버 조회 | `JsonRpcProvider` | `lib/data/chain/provider.ts` | 서버 (`server-only`) | 서버 전용 환경 변수 `RPC_URL` |
+| 트랜잭션 서명 | `BrowserProvider` + `Signer` | `lib/wallet/signer.ts` | 브라우저 (`"use client"`) | 사용자 MetaMask (`window.ethereum`) |
+
+- `lib/contracts`는 ABI·주소와 `getXxxContract(runner)` 함수만 제공하고, Provider나 Signer를 직접 만들지 않는다. 서버는 Provider를, 클라이언트는 Signer를 전달해 같은 ABI·주소로 컨트랙트 객체를 얻는다.
+- 브라우저의 트랜잭션 전송과 영수증 대기는 MetaMask가 연결한 노드를 사용하므로, 클라이언트는 RPC 주소를 알 필요가 없다. 따라서 `RPC_URL`은 브라우저로 전달하지 않는다.
+- 컨트랙트 주소와 chainId는 비밀값이 아니므로 환경 변수 대신 `lib/contracts/deployment.json`에서 읽는다. 클라이언트용 `NEXT_PUBLIC_` 변수는 현재 필요하지 않다.
 
 ## 4. 스마트 컨트랙트 설계
 
@@ -258,9 +313,9 @@ b-side/
                                                       └─ postgresReader (향후)
 ```
 
-- 화면 코드는 `MarketReader` 인터페이스와 `lib/data/types.ts`의 도메인 타입에만 의존한다.
-- 구현체는 환경 변수 `DATA_SOURCE`로 선택한다. MVP는 `chain`만 구현한다.
-- PostgreSQL 도입 시 이벤트를 DB에 적재하는 인덱서와 `postgresReader`를 추가하면 화면 코드를 수정하지 않아도 된다.
+- 화면 코드는 `MarketReader` 인터페이스와 `lib/domain/types.ts`의 도메인 타입에만 의존한다.
+- MVP에서 `getMarketReader()`는 `chainReader`를 바로 반환한다. 구현체가 하나뿐이므로 선택 로직(환경 변수 등)은 만들지 않는다.
+- PostgreSQL 도입 시 이벤트를 DB에 적재하는 인덱서와 `postgresReader`를 추가하고, 그때 `getMarketReader()`에 선택 로직을 넣는다. 화면 코드는 수정하지 않아도 된다.
 
 `chainReader` 조회 방식:
 
@@ -280,7 +335,7 @@ b-side/
 ### 6.2 쓰기 흐름
 
 1. 사용자가 브라우저에서 버튼을 누른다.
-2. `lib/tx/`가 MetaMask 서명 요청을 보낸다. 판매 등록은 NFT `approve` 후 `list` 순서로 진행한다.
+2. 컴포넌트가 `useTx` 훅으로 `lib/tx/nft.ts` 또는 `lib/tx/escrow.ts`의 함수를 호출하고, MetaMask 서명 요청이 열린다. 진행 상태(서명 대기, 전송, 성공, 실패)는 `TxStatus` 컴포넌트로 표시한다. 판매 등록은 NFT `approve` 후 `list` 순서로 진행한다.
 3. 트랜잭션이 블록에 포함되면 `router.refresh()`로 서버 조회 결과를 다시 불러온다.
 4. 연결된 네트워크가 Sepolia(또는 개발 중 로컬 Hardhat 네트워크)가 아니면 전환을 요청한다.
 
@@ -304,22 +359,32 @@ b-side/
 }
 ```
 
-Phase 1 테스트용 CID:
-- 컨트랙트는 빈 CID를 거부한다. Phase 1에서는 `lib/config/sampleCids.ts`에 정의한 샘플 CID를 사용한다.
+### 6.4 Phase 1 테스트용 CID
+
+컨트랙트는 빈 CID를 거부한다. Phase 1에는 업로드 기능이 없으므로, **실제로 IPFS에서 조회할 수 있는 샘플 데이터**를 미리 올려 두고 그 CID를 사용한다.
+
+1. 샘플 원본을 `samples/ipfs/`에 저장소 파일로 둔다: 샘플 이미지, NFT 메타데이터 JSON(`image`가 샘플 이미지 CID를 가리킴), 상품 상태 기록 JSON. 샘플임을 알 수 있도록 이름·설명에 "[테스트용]"을 붙인다.
+2. 사용자가 Pinata 대시보드에서 샘플 파일을 업로드한다. 업로드에 쓰는 Pinata 키는 코드나 저장소에 넣지 않는다.
+3. 발급된 CID를 `lib/config/sampleCids.ts`에 기록한다. CID는 공개 정보이므로 커밋해도 된다.
+4. 공개 게이트웨이(`lib/config/ipfs.ts`)로 각 CID를 조회해 내용이 원본과 같은지 확인한다.
+
 - 화면에서는 샘플 CID에 "테스트용" 표시를 붙여 실제 상품 정보로 오인하지 않게 한다.
+- 컨트랙트 단위 테스트(Hardhat)는 IPFS를 조회하지 않으므로 비어 있지 않은 임의의 CID 문자열을 사용해도 된다. 샘플 CID는 화면 조회와 시연에 사용한다.
 - Phase 2에서 실제 업로드로 바꿔도 컨트랙트는 수정하지 않는다.
+- 선행 조건: 6단계 시작 전에 Pinata 계정과 샘플 업로드가 필요하다.
 
 ## 7. 환경 변수와 비밀값
 
 | 파일 | 변수 | 용도 | 노출 범위 |
 |---|---|---|---|
-| `.env.local` | `SEPOLIA_RPC_URL` | 서버 조회용 RPC | 서버 전용 |
-| `.env.local` | `PINATA_JWT` | IPFS 업로드 | 서버 전용 |
-| `.env.local` | `DATA_SOURCE` | 조회 구현체 선택 (`chain`) | 서버 전용 |
+| `.env.local` | `RPC_URL` | 서버 조회용 RPC (개발: 로컬 Hardhat 노드, 시연: Sepolia) | 서버 전용 |
+| `.env.local` | `PINATA_JWT` | IPFS 업로드 (Phase 2) | 서버 전용 |
 | Hardhat keystore (`contracts/`) | `SEPOLIA_PRIVATE_KEY`, `SEPOLIA_RPC_URL` | 컨트랙트 배포 | 로컬 전용 (암호화 저장) |
 
-- `NEXT_PUBLIC_` 접두사가 붙은 변수만 브라우저 번들에 포함된다. 비밀값에는 붙이지 않는다.
-- Pinata와 RPC를 다루는 모듈은 `import 'server-only'`로 클라이언트에서 가져올 수 없게 한다.
+- `NEXT_PUBLIC_` 접두사가 붙은 변수만 브라우저 번들에 포함된다. 비밀값에는 붙이지 않으며, 현재 계획에는 `NEXT_PUBLIC_` 변수가 없다 (3.2).
+- RPC·Pinata를 다루는 모듈(`lib/data/chain/*`, `lib/ipfs/*`)은 첫 줄에 `import 'server-only'`를 둔다. 클라이언트 컴포넌트가 실수로 가져오면 빌드가 실패한다.
+- Route Handler의 응답과 Server Component가 클라이언트 컴포넌트에 넘기는 props에는 비밀값이나 RPC 주소를 넣지 않는다. 업로드 응답은 CID만 돌려준다.
+- RPC 주소에 API 키가 포함된 경우(Alchemy·Infura 등)도 비밀값으로 취급한다.
 - `.env*` 파일은 `.gitignore`에 포함하고, 저장소에는 값 없는 루트 `.env.example`만 커밋한다.
 - 컨트랙트 배포용 비밀값은 평문 `.env` 파일 대신 Hardhat keystore에 암호화해 저장한다 (`npx hardhat keystore set SEPOLIA_PRIVATE_KEY`). `hardhat.config.ts`는 `configVariable`로 값을 참조하며, Sepolia 네트워크를 사용할 때만 값을 요구하므로 로컬 컴파일·테스트에는 비밀값이 필요 없다. 같은 이름의 환경 변수가 있으면 그 값을 사용할 수도 있다.
 - 컨트랙트 주소와 ABI는 비밀값이 아니므로 `lib/contracts/`에 저장한다.
@@ -374,5 +439,7 @@ Phase 1 테스트용 CID:
 
 프론트엔드:
 - `npm run lint`, `npm run build`
+- 비밀값 노출 점검: 빌드 후 `.next/static`(브라우저로 전달되는 파일)에서 `RPC_URL`, `PINATA_JWT` 값이 검색되지 않는지 확인
+- 샘플 CID 점검: `sampleCids.ts`의 모든 CID가 공개 게이트웨이에서 조회되는지 확인
 - 로컬 Hardhat 노드와 MetaMask 계정 3개(관리자·아티스트 / 판매자 / 구매자)로 흐름 A·B 수동 시연
 - Sepolia 배포 후 같은 시나리오 반복

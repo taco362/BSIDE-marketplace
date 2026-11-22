@@ -74,3 +74,5 @@
 | 2026-11-22 | 설계 재검토: 최초 판매 판정(D9), 아티스트 재판매(D10) 확정. 기한 경계, NFT 전송 방식(`transferFrom`), pull payment 검증 조건, 테스트용 CID, 조회 인덱스 최소화, 관리자 한계 반영 |
 | 2026-11-22 | 문서 정리: proposal.md 갱신, architecture.md·progress.md 작성, CLAUDE.md 문서 참조 규칙 추가 |
 | 2026-11-22 | Phase 1 · 1단계 완료: Hardhat 3 프로젝트 구성, 비밀값 관리 방식을 `contracts/.env`에서 Hardhat keystore로 변경 |
+| 2026-11-22 | 프론트엔드 구조 모듈화: `components/`, `hooks/`, `lib/domain/` 추가, `lib/tx` 컨트랙트별 분리, 라우트 전용 `_components/`, 모듈 의존 규칙(architecture.md 3.1) 추가 |
+| 2026-11-22 | 구조 원칙 보완: 파일은 필요할 때 생성, `DATA_SOURCE` 선택 로직 제거, 서버 Provider / 클라이언트 Signer 분리(3.2), 서버 RPC 환경 변수 `SEPOLIA_RPC_URL` → `RPC_URL`, 테스트용 CID를 실제 조회 가능한 Pinata 샘플로 변경(6.4) |
