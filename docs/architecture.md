@@ -96,7 +96,7 @@ b-side/
 │  ├─ hardhat.config.ts         # solc 0.8.28, sepolia 네트워크 (configVariable)
 │  ├─ contracts/BSideNFT.sol
 │  ├─ contracts/BSideEscrow.sol
-│  ├─ contracts/test/           # 테스트용 공격·거부 컨트랙트
+│  ├─ contracts/test/MockBuyer.sol # 테스트 전용 (재진입·ETH 수신 거부·NFT 수신 불가 구매자). 배포하지 않음
 │  ├─ test/
 │  └─ scripts/deploy.ts
 └─ docs/
@@ -230,6 +230,15 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 - 그 외에는 `royalty = 0`. 판매자가 아티스트인 경우 로열티 수령자가 판매자 본인이므로 0으로 기록하며, 실제 수령액은 같다 (D10).
 - `sellerAmount = price − royalty`. 나머지가 남지 않는다.
 
+구현 세부:
+- `constructor(admin, nft, confirmPeriod)`: 관리자에게 `DEFAULT_ADMIN_ROLE`과 `ARBITER_ROLE`을 함께 부여한다 (MVP는 관리자 1명, 8.3). 0 주소와 `confirmPeriod == 0`은 거부한다.
+- 거래 ID는 1부터 순서대로 붙는다. 시각 필드(`listedAt`, `lockedAt`, `closedAt`)는 `uint64` 초 단위이며, 해당 시점 전에는 0이다.
+- `list()` 검사 순서: ① NFT의 `escrow()`가 이 컨트랙트인지 (`EscrowNotRegistered`) ② 호출자가 소유자인지 (`NotTokenOwner`) ③ CID가 비어 있지 않은지 ④ 가격 > 0 ⑤ 가격 규칙. ①은 NFT에 등록되지 않은 에스크로로 거래하면 최초 판매 자격 판정과 직접 전송 차단이 어긋나기 때문에 둔다.
+- 이벤트를 먼저 기록하고 NFT 전송(외부 호출)은 함수 마지막에 둔다 (Checks-Effects-Interactions).
+- 취소 사유는 `enum CancelReason { SellerCancelled, SellerRefunded, DisputeRefunded }`로 `Cancelled` 이벤트에 기록한다.
+- 오류(custom error): `ZeroAddress`, `ZeroConfirmPeriod`, `EscrowNotRegistered`, `ListingNotFound(id)`, `InvalidStatus(id, current)`, `NotTokenOwner`, `NotSeller`, `NotBuyer`, `EmptyConditionCID`, `ZeroPrice`, `PrimaryPriceMismatch(initialPrice, price)`, `PriceExceedsCap(cap, price)`, `SelfPurchase`, `IncorrectPayment(price, sent)`, `DeadlinePassed`, `DeadlineNotReached`, `NothingToWithdraw`, `WithdrawFailed`
+- 상태를 바꾸는 함수는 `list`, `cancelListing`, `buy`, `confirmReceipt`, `claimAfterTimeout`, `refundBySeller`, `openDispute`, `resolveDispute`, `withdraw`와 AccessControl 기본 함수뿐이다. 관리자용 자금 이동 함수는 없다 (테스트로 확인).
+
 ### 4.3 상태 전이
 
 ```
@@ -291,7 +300,8 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 | 컨트랙트 | 함수 | 용도 |
 |---|---|---|
 | BSideEscrow | `listingCount()` | 전체 거래 수 |
-| BSideEscrow | `getListings(offset, limit)` | 거래 정보를 묶음으로 조회 |
+| BSideEscrow | `getListings(offset, limit)` | `ListingView { listingId, listing }` 배열을 묶음으로 조회. offset은 0부터(거래 ID = offset + 1). 단건 조회도 `getListings(id − 1, 1)`로 한다 |
+| BSideEscrow | `pendingWithdrawals(addr)`, `confirmPeriod()` | 출금 대기액, 수령 승인 기한 (deadline은 `lockedAt + confirmPeriod`로 계산) |
 | BSideNFT | `totalMinted()` | 전체 토큰 수 |
 | BSideNFT | `getTokens(offset, limit)` | 토큰 정보 + 소유자를 묶음으로 조회 |
 
