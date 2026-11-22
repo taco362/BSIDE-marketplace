@@ -154,9 +154,18 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 | `mint(uri, initialPrice, policy, policyBps)` | `ARTIST_ROLE` | msg.sender에게 발행. TokenInfo 기록 |
 | `setEscrow(addr)` | 관리자 | 에스크로 주소 등록. **1회만 호출 가능** |
 | `getTokenInfo(id)` | 누구나 | 토큰 정보 조회 |
-| `isPrimaryAvailable(id)` | 누구나 | `!primaryEnded[id]` |
+| `isPrimaryAvailable(id)` | 누구나 | 최초 판매 자격 여부 `!primaryEnded[id]` (플랫폼 최초 판매 완료 여부와 다름, 아래 참고) |
 | `totalMinted()` | 누구나 | 발행된 토큰 수 |
-| `getTokens(offset, limit)` | 누구나 | TokenInfo + 현재 소유자를 묶음으로 조회 |
+| `getTokens(offset, limit)` | 누구나 | `TokenView { tokenId, owner, info, primaryEnded, tokenURI }` 배열을 묶음으로 조회. offset은 0부터(토큰 ID = offset + 1) |
+| `escrow()` | 누구나 | 등록된 에스크로 주소 (미등록 시 0) |
+
+구현 세부:
+- 이름·심볼: `B-SIDE Goods` / `BSIDE`. 토큰 ID는 1부터 순서대로 붙는다.
+- `constructor(admin)`: 관리자 주소를 받아 `DEFAULT_ADMIN_ROLE`을 부여한다. 관리자도 `ARTIST_ROLE`이 없으면 발행할 수 없다.
+- 발행은 `_mint`를 사용한다. 받는 주소가 발행자 본인이므로 수신 콜백(`_safeMint`)이 필요 없다.
+- 정책 범위는 상수로 공개한다: `PRICE_CAP_MIN_BPS`(10000), `PRICE_CAP_MAX_BPS`(15000), `ROYALTY_MIN_BPS`(100), `ROYALTY_MAX_BPS`(1000).
+- 오류는 custom error로 반환한다: `EmptyTokenURI`, `ZeroInitialPrice`, `InvalidPolicyBps(policy, bps)`, `EscrowAlreadySet`, `ZeroAddress`, `DirectTransferToEscrow`. 권한 오류는 OpenZeppelin의 `AccessControlUnauthorizedAccount`, 존재하지 않는 토큰은 `ERC721NonexistentToken`이다.
+- 이벤트: ERC721 표준 `Transfer`(발행·전송), ERC4906 `MetadataUpdate`(URI 설정), `EscrowSet`
 
 발행 검증:
 - `uri`는 비어 있으면 안 된다.
@@ -164,15 +173,31 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 - `policyBps` 범위 (D3): PriceCap은 10000~15000, Royalty는 100~1000, Free는 0. 범위를 벗어나면 revert한다.
 - **TokenInfo를 수정하는 함수는 없다.** 관리자도 정책을 변경할 수 없다.
 
-최초 판매 판정 (D9):
-- `_update`를 override해서, 전송받는 주소 `to`가 `0`(소각), 해당 토큰의 `artist`, `escrow` 중 어느 것도 아니면 `primaryEnded[tokenId] = true`로 기록한다.
-- 결과적으로 다음 경우에 최초 판매가 끝난다.
-  - 플랫폼 밖에서 아티스트가 다른 주소로 전송한 경우
+최초 판매 자격 판정 (D9):
+- `_update`를 override해서, 전송받는 주소 `to`가 `0`(소각), 해당 토큰의 `artist`, `escrow` 중 어느 것도 아니면 `primaryEnded[tokenId] = true`로 기록한다. 직접 전송, `safeTransferFrom`, 승인받은 대리인(operator)의 전송 모두 같은 경로를 거친다.
+- 결과적으로 다음 경우에 최초 판매 자격이 종료된다.
+  - 플랫폼 밖에서 아티스트(또는 대리인)가 다른 주소로 전송한 경우
   - 에스크로 거래가 완료되어 NFT가 구매자에게 이전된 경우
-- 다음 경우에는 최초 판매가 유지된다.
+- 다음 경우에는 최초 판매 자격이 유지된다.
   - 발행 직후 (아티스트 소유)
   - 에스크로에 예치된 경우
   - 거래가 취소되어 에스크로에서 아티스트에게 반환된 경우
+- 한 번 종료된 자격은 되돌아오지 않는다 (외부로 보냈다가 돌려받은 경우, 재판매자가 예치 후 반환받은 경우 포함).
+
+**"최초 판매 자격 종료"와 "플랫폼 최초 판매 완료"는 다른 개념이다.**
+
+| 구분 | 의미 | 사용처 | 판단 근거 |
+|---|---|---|---|
+| 최초 판매 자격 | 최초 판매가 고정 규칙을 적용할 수 있는가 | 에스크로 `list()`의 가격 규칙 선택 | `nft.isPrimaryAvailable(tokenId)` |
+| 플랫폼 최초 판매 완료 | B-SIDE에서 아티스트의 첫 판매가 실제로 성사되었는가 | 화면 표시, 거래 이력 | 에스크로 거래 기록 중 `isPrimary == true && status == COMPLETED`인 거래 존재 여부 |
+
+- 컨트랙트는 자격만 저장한다. 완료 여부는 거래 기록에서 계산할 수 있으므로 따로 저장하지 않는다.
+- 화면에서는 두 경우를 구분해 표시한다 (예: "플랫폼 최초 판매 완료" / "외부 이전으로 최초 판매 자격 종료").
+
+에스크로 직접 전송 차단:
+- `_update`에서 `to == escrow`인데 전송을 실행한 주체(`auth`)가 에스크로가 아니면 `DirectTransferToEscrow`로 거부한다.
+- 에스크로로 들어가는 유일한 경로는 에스크로의 `list()`(사전 `approve` 후 에스크로가 `transferFrom` 호출)다. 소유자나 대리인이 `transferFrom`으로 에스크로에 바로 보내면 판매 등록 기록이 없어 NFT가 영구히 묶이므로 이를 막는다.
+- 에스크로가 등록되기 전(`escrow == 0`)에는 적용되지 않는다.
 - 구현 주의: `mint`에서 TokenInfo(`artist`)를 `_mint` 호출 **이전에** 기록해야 한다. 순서가 바뀌면 발행 시점에 `artist`가 0으로 읽혀 `primaryEnded`가 잘못 true가 된다. 테스트로 확인한다.
 - 이전 설계(에스크로의 첫 거래 완료 여부로 판정)는 외부에서 팔았다가 돌려받은 NFT를 최초 판매로 잘못 판정하는 문제가 있어 이 방식으로 변경했다.
 
@@ -226,7 +251,7 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 
 | 함수 | 호출자 | 이전 상태 → 다음 상태 | 조건 | 결과 |
 |---|---|---|---|---|
-| `list(tokenId, price, cid)` | NFT 소유자 | – → LISTED | 사전 `approve` 필요, `cid` 비어 있지 않음, 가격 규칙(4.2) 충족 | NFT가 에스크로로 이동 |
+| `list(tokenId, price, cid)` | NFT 소유자 | – → LISTED | 사전 `approve` 필요, `cid` 비어 있지 않음, 가격 규칙(4.2) 충족 | 에스크로가 `transferFrom`으로 NFT를 가져온다 (에스크로로 들어가는 유일한 경로, 4.1) |
 | `cancelListing(id)` | 판매자 | LISTED → CANCELLED | – | NFT 판매자 반환 |
 | `buy(id)` | 판매자가 아닌 사용자 | LISTED → LOCKED | `msg.value == price` | `buyer`, `lockedAt` 기록 |
 | `confirmReceipt(id)` | 구매자 | LOCKED → COMPLETED | 기한과 무관 | 정산 (5.1) |
@@ -301,7 +326,9 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 
 결정: **모든 NFT 전송에 `transferFrom`을 사용한다.**
 - 예치(판매자 → 에스크로), 이전(에스크로 → 구매자), 반환(에스크로 → 판매자) 모두 적용한다.
-- 에스크로가 IERC721Receiver를 구현하지 않으므로, 누군가 `safeTransferFrom`으로 에스크로에 NFT를 직접 보내면 거부된다. 판매 등록 없이 에스크로에 묶이는 NFT가 생기지 않는다.
+- 판매 등록 없이 에스크로에 NFT가 들어오면 꺼낼 방법이 없어 영구히 묶인다. 이를 두 겹으로 막는다.
+  - `safeTransferFrom`으로 직접 보내는 경우: 에스크로가 IERC721Receiver를 구현하지 않으므로 거부된다.
+  - `transferFrom`으로 직접 보내는 경우: 받는 쪽 확인이 없어 위 방법으로는 막을 수 없다. BSideNFT의 `_update`가 에스크로 자신이 실행하지 않은 전송을 `DirectTransferToEscrow`로 거부한다 (4.1).
 
 ## 6. 데이터 조회와 흐름
 
@@ -398,6 +425,7 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 | 재진입 공격 | `nonReentrant`, Checks-Effects-Interactions, pull payment, `transferFrom` 사용 |
 | 무단 호출 | 함수별 호출자 검사 (판매자, 구매자, `ARTIST_ROLE`, `ARBITER_ROLE`) |
 | 중복 판매 | NFT 에스크로 보관 |
+| 판매 등록 없는 에스크로 입고 (NFT 영구 묶임) | BSideNFT `_update`의 직접 전송 차단 + 에스크로 IERC721Receiver 미구현 (5.2) |
 | 중복 정산 | 상태 전이 선행, 종료 상태(COMPLETED, CANCELLED)에서 추가 전이 불가 |
 | 송금 거부 DoS | pull payment, NFT `transferFrom` |
 | 가격 변경 경쟁 | 등록 후 가격 수정 함수 없음 (취소 후 재등록), `msg.value == price` |
@@ -429,7 +457,8 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 ## 9. 테스트 전략
 
 컨트랙트 테스트 (`cd contracts && npx hardhat test`):
-- **BSideNFT**: 아티스트 권한 검사, 정책별 bps 범위 검증, 빈 URI·0 가격 거부, 정책 불변, `setEscrow` 1회 제한, `primaryEnded` 판정(외부 전송, 에스크로 예치·반환, 거래 완료)
+- **BSideNFT**: 아티스트 권한 검사, 정책별 bps 범위 검증, 빈 URI·0 가격 거부, 정책 불변, `setEscrow` 1회 제한, 에스크로 직접 전송 차단(소유자·대리인, `transferFrom`·`safeTransferFrom`), 최초 판매 자격 판정(외부 전송, 대리인 전송, 에스크로 예치·반환, 거래 완료, 재판매자 예치·반환)
+- **BSideNFT + BSideEscrow 통합**: 실제 에스크로의 `list`·취소·완료를 거칠 때 최초 판매 자격이 4.1의 표대로 바뀌는지
 - **BSideEscrow 상태 전이**: 표 4.3의 모든 전이에 대해 허용 케이스와 거부 케이스(잘못된 호출자, 잘못된 상태)
 - **기한 경계**: Hardhat 시간 조작으로 `deadline − 1`, `deadline`, `deadline + 1` 시점의 분쟁 제기와 자동 정산 검증
 - **가격 규칙**: 최초 판매가 일치, 상한 경계값(정확히 상한, 상한 + 1 wei), 아티스트 재판매

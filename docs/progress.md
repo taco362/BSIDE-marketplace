@@ -6,9 +6,9 @@
 
 ## 현재 상태
 
-- **단계**: Phase 1 · 1단계 완료
-- **다음 작업**: Phase 1 · 2단계 (BSideNFT 구현 및 테스트) — 사용자 승인 후 시작
-- **저장소 상태**: Next.js 16.4.6 초기 화면 + `contracts/` Hardhat 3 프로젝트 (컨트랙트 코드 없음)
+- **단계**: Phase 1 · 2단계 완료
+- **다음 작업**: Phase 1 · 3단계 (BSideEscrow 구현 및 테스트) — 사용자 승인 후 시작
+- **저장소 상태**: Next.js 16.4.6 초기 화면 + `contracts/` Hardhat 3 프로젝트 (BSideNFT 구현 완료)
 
 ## 진행 원칙
 
@@ -20,9 +20,9 @@
 | 단계 | 작업 | 완료 기준 | 상태 |
 |---|---|---|---|
 | 1 | 개발 환경 구성: `contracts/` Hardhat 프로젝트, OpenZeppelin 설치, `.gitignore`·`.env.example` 정리 | Hardhat 샘플 컴파일 성공, 비밀값 파일이 git에서 제외됨 | ☑ 완료 |
-| 2 | BSideNFT 구현 및 테스트 | architecture.md 9장의 BSideNFT 테스트 통과 | ☐ 대기 |
+| 2 | BSideNFT 구현 및 테스트 | architecture.md 9장의 BSideNFT 테스트 통과 | ☑ 완료 |
 | 3 | BSideEscrow 전체 상태 머신 구현 및 테스트 (등록·취소·구매·승인·기한 정산·판매자 환불·분쟁·중재·출금) | architecture.md 9장의 Escrow·정산·보안 테스트 통과 | ☐ 대기 |
-| 4 | 배포 스크립트: 로컬 노드·Sepolia 배포, ABI·주소·배포 블록을 `lib/contracts/`로 내보내기 | 로컬 노드 배포 성공 | ☐ 대기 |
+| 4 | 배포 스크립트: 명령 한 번으로 NFT·에스크로 배포 → `setEscrow` → 아티스트 등록 → 시연용 NFT 발행 → ABI·주소·배포 블록을 `lib/contracts/`로 내보내기 (에스크로 주소는 1회만 등록되므로 재배포는 이 스크립트로 전체를 다시 생성) | 로컬 노드에서 스크립트 1회 실행으로 배포·초기 데이터 생성 성공 | ☐ 대기 |
 | 5 | 프론트 기반: 지갑 연결, `MarketReader`·chainReader, 목록·상세·토큰 이력 페이지 | `npm run lint`, `npm run build` 통과, 로컬 노드 데이터 조회 확인 | ☐ 대기 |
 | 6 | 거래 화면: 관리자 아티스트 등록, 발행, 판매 등록, 구매·수령 승인, 출금 (테스트용 샘플 CID 사용) | 로컬 노드에서 흐름 A·B 수동 시연 성공 | ☐ 대기 |
 | 7 | Sepolia 배포 및 시연 점검 (짧은 `confirmPeriod`) | Sepolia에서 흐름 A·B 시연 성공 | ☐ 대기 |
@@ -39,6 +39,21 @@
 - 비고
   - `npm audit`: 개발 도구의 하위 의존성(`zod`, `glob`, `minimatch`)에서 취약점 16건(high 13, moderate 3) 보고. 배포되는 웹·컨트랙트 코드에는 포함되지 않으며, `npm audit fix --force`는 호환되지 않는 버전 변경 위험이 있어 적용하지 않음. 상위 패키지 업데이트 시 재확인
   - Hardhat 3에서 `network.connect()`는 deprecated 경고가 출력됨 → 테스트에서는 `network.getOrCreate()` 사용 예정
+
+### 2단계 결과 (2026-11-22)
+
+- 구현: `contracts/contracts/BSideNFT.sol` (ERC721URIStorage + AccessControl). 세부 사항은 architecture.md 4.1
+- 테스트: `contracts/test/BSideNFT.ts` — **45개 통과, 실패 0** (`npm run typecheck` 통과)
+  - 배포와 권한 6, 발행 3, 정책 수치 범위 경계값 11, 정책 불변 2, 에스크로 등록 4, 에스크로 직접 전송 차단 5, 최초 판매 자격 판정(D9) 11, 조회 3
+  - 에스크로 동작은 3단계 전이므로 테스트에서는 일반 계정을 에스크로 주소로 등록하고, 실제 `list()`와 같은 방식(approve 후 에스크로가 transferFrom)으로 예치·반환·이전을 재현함
+- 검증 보강: TokenInfo 기록을 `_mint` 뒤로 옮긴 변형 코드로 테스트를 돌려 4개가 실패하는 것을 확인 (순서 버그를 테스트가 검출함). 확인 후 원본 복구
+- 2단계 검토 후 보완 (사용자 승인)
+  - 에스크로 직접 전송 차단(`DirectTransferToEscrow`) 추가: `transferFrom`으로 에스크로에 바로 보내면 NFT가 영구히 묶이는 문제 수정. architecture.md 5.2의 잘못된 설명도 수정
+  - 용어 정리: "최초 판매 종료" → "최초 판매 자격 종료". 플랫폼 최초 판매 완료와 구분 (proposal.md D9, architecture.md 4.1). 정책 내용은 변경 없음
+  - 에스크로 1회 등록은 유지하고, 재배포는 4단계 배포 스크립트로 자동화하기로 함
+  - 테스트 보강: 대리인 전송, `safeTransferFrom`, 재판매자 예치·반환, 직접 전송 차단
+  - `contracts/package.json`에 `typecheck` 스크립트 추가 (typechain 타입 생성 후 `tsc` 실행)
+- 비고: 실제 BSideEscrow와 연동한 최초 판매 자격 판정은 3단계 통합 테스트에서 다시 확인
 
 참고: 컨트랙트의 환불·분쟁·중재 기능은 배포 후 변경이 어렵기 때문에 Phase 1(3단계)에서 함께 구현한다. 해당 화면(UI)은 Phase 2에서 만든다.
 
@@ -76,3 +91,5 @@
 | 2026-11-22 | Phase 1 · 1단계 완료: Hardhat 3 프로젝트 구성, 비밀값 관리 방식을 `contracts/.env`에서 Hardhat keystore로 변경 |
 | 2026-11-22 | 프론트엔드 구조 모듈화: `components/`, `hooks/`, `lib/domain/` 추가, `lib/tx` 컨트랙트별 분리, 라우트 전용 `_components/`, 모듈 의존 규칙(architecture.md 3.1) 추가 |
 | 2026-11-22 | 구조 원칙 보완: 파일은 필요할 때 생성, `DATA_SOURCE` 선택 로직 제거, 서버 Provider / 클라이언트 Signer 분리(3.2), 서버 RPC 환경 변수 `SEPOLIA_RPC_URL` → `RPC_URL`, 테스트용 CID를 실제 조회 가능한 Pinata 샘플로 변경(6.4) |
+| 2026-11-22 | Phase 1 · 2단계 완료: BSideNFT 구현, 테스트 37개 통과. architecture.md 4.1에 구현 세부 사항 추가 |
+| 2026-11-22 | 2단계 검토 보완: 에스크로 직접 전송 차단 추가, "최초 판매 자격" 용어 정리, 4단계 배포 자동화 기준 추가, 테스트 45개 통과 |
