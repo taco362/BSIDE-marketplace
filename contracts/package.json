@@ -7,7 +7,10 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "typecheck": "hardhat compile && tsc --noEmit",
-    "clean": "hardhat clean"
+    "clean": "hardhat clean",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "mint:local": "hardhat run scripts/mint.ts --network localhost"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox-mocha-ethers": "^4.0.0",

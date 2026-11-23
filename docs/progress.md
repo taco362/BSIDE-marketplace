@@ -6,9 +6,9 @@
 
 ## 현재 상태
 
-- **단계**: Phase 1 · 3단계 완료
-- **다음 작업**: Phase 1 · 4단계 (배포 스크립트) — 사용자 승인 후 시작
-- **저장소 상태**: Next.js 16.4.6 초기 화면 + `contracts/` Hardhat 3 프로젝트 (BSideNFT, BSideEscrow 구현 완료)
+- **단계**: Phase 1 · 4단계 완료
+- **다음 작업**: Phase 1 · 5단계 (프론트 기반: 지갑 연결, 조회 계층, 목록·상세 페이지) — 사용자 승인 후 시작
+- **저장소 상태**: Next.js 16.4.6 초기 화면 + `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보)
 
 ## 진행 원칙
 
@@ -22,9 +22,9 @@
 | 1 | 개발 환경 구성: `contracts/` Hardhat 프로젝트, OpenZeppelin 설치, `.gitignore`·`.env.example` 정리 | Hardhat 샘플 컴파일 성공, 비밀값 파일이 git에서 제외됨 | ☑ 완료 |
 | 2 | BSideNFT 구현 및 테스트 | architecture.md 9장의 BSideNFT 테스트 통과 | ☑ 완료 |
 | 3 | BSideEscrow 전체 상태 머신 구현 및 테스트 (등록·취소·구매·승인·기한 정산·판매자 환불·분쟁·중재·출금) | architecture.md 9장의 Escrow·정산·보안 테스트 통과 | ☑ 완료 |
-| 4 | 배포 스크립트: 명령 한 번으로 NFT·에스크로 배포 → `setEscrow` → 아티스트 등록 → 시연용 NFT 발행 → ABI·주소·배포 블록을 `lib/contracts/`로 내보내기 (에스크로 주소는 1회만 등록되므로 재배포는 이 스크립트로 전체를 다시 생성) | 로컬 노드에서 스크립트 1회 실행으로 배포·초기 데이터 생성 성공 | ☐ 대기 |
+| 4 | 배포 스크립트: 명령 한 번으로 NFT·에스크로 배포 → `setEscrow` → 아티스트 등록 → ABI·주소·배포 블록을 `lib/contracts/`로 내보내기 (에스크로 주소는 1회만 등록되므로 재배포는 이 스크립트로 전체를 다시 생성). NFT 발행은 별도 스크립트로 분리 | 로컬 노드에서 스크립트 1회 실행으로 배포·초기 설정 성공 | ☑ 완료 |
 | 5 | 프론트 기반: 지갑 연결, `MarketReader`·chainReader, 목록·상세·토큰 이력 페이지 | `npm run lint`, `npm run build` 통과, 로컬 노드 데이터 조회 확인 | ☐ 대기 |
-| 6 | 거래 화면: 관리자 아티스트 등록, 발행, 판매 등록, 구매·수령 승인, 출금 (테스트용 샘플 CID 사용) | 로컬 노드에서 흐름 A·B 수동 시연 성공 | ☐ 대기 |
+| 6 | 거래 화면: 관리자 아티스트 등록, 발행, 판매 등록, 구매·수령 승인, 출금 (Pinata에 수동 업로드한 실제 CID 사용) | 로컬 노드에서 흐름 A·B 수동 시연 성공 | ☐ 대기 |
 | 7 | Sepolia 배포 및 시연 점검 (짧은 `confirmPeriod`) | Sepolia에서 흐름 A·B 시연 성공 | ☐ 대기 |
 
 ### 1단계 결과 (2026-11-22)
@@ -84,6 +84,22 @@
   - 재진입 방어는 `nonReentrant`와 CEI 순서(대기액 선 초기화) 두 겹이다. 둘 중 하나만 빠진 경우에는 남은 한 겹이 공격을 막으므로 재진입 테스트가 통과한다 (테스트는 "공격이 성공하지 않음"을 확인한다)
   - 테스트 작성 중 chai matcher `emit(...).and.changeEtherBalances(...)` 체이닝이 Hardhat 3에서 트랜잭션 오류를 일으켜, 같은 트랜잭션에 대해 두 검사를 분리하는 방식으로 수정함
 
+### 4단계 결과 (2026-11-23)
+
+- 구현: `contracts/scripts/deploy.ts`, `contracts/scripts/mint.ts`, `contracts/package.json`에 `node`·`deploy:local`·`mint:local` 스크립트 추가. 세부 사항은 architecture.md 4.5
+- 생성물: `lib/contracts/deployment.json`, `lib/contracts/abi/BSideNFT.json`, `lib/contracts/abi/BSideEscrow.json` (새 로컬 노드 1회 배포 결과)
+- 범위 조정 (사용자 결정): 배포와 NFT 발행을 분리하고, 샘플 CID 기록 파일·임시 CID 관리 로직은 만들지 않음. 실제 NFT 발행은 Pinata에 메타데이터를 업로드한 뒤 진행. 가짜 CID로 발행하지 않음 (architecture.md 6.4, proposal.md FR-03 수정)
+- 검증 (로컬 노드)
+  - 배포 후 내보낸 ABI·주소만으로 노드를 직접 조회: NFT↔에스크로 상호 등록, `confirmPeriod` 300초, 관리자 `DEFAULT_ADMIN_ROLE`·`ARBITER_ROLE`, 아티스트(계정 #1) `ARTIST_ROLE`, 발행 0·거래 0 — 모두 확인
+  - 같은 노드에 재배포 시 새 주소로 정상 배포·덮어쓰기 확인
+  - 입력 검증: 잘못된 `CONFIRM_PERIOD_SECONDS`, 잘못된 `ARTIST_ADDRESSES`, `METADATA_URI` 누락, `ipfs://` 형식 아님, 잘못된 `POLICY` → 모두 안내 메시지와 함께 중단
+  - 컨트랙트 테스트 106개, `npm run typecheck`, 루트 `npm run lint`·`npm run build` 통과
+- 미검증 (숨기지 않음)
+  - `mint.ts`의 실제 발행 경로: 가짜 CID 발행 금지 방침에 따라 실행하지 않음. Pinata 업로드 후 첫 발행 시 확인 필요
+  - 로컬이 아닌 네트워크(Sepolia) 배포 경로: 7단계에서 확인 (`CONFIRM_PERIOD_SECONDS` 필수 검사 포함)
+- 비고 (Windows 환경)
+  - 백그라운드로 실행한 `npx hardhat node`를 종료해도 실제 노드 프로세스(`node ... hardhat ... node`)가 남아 8545 포트를 계속 점유하는 경우가 있었음. 이 때문에 다음 노드 실행이 포트 충돌로 실패하고 배포가 이전 노드로 들어감 → 해당 프로세스를 직접 종료한 뒤 새 노드에 다시 배포함. 터미널에서 직접 실행할 때는 `Ctrl+C`로 종료하면 된다
+
 참고: 컨트랙트의 환불·분쟁·중재 기능은 배포 후 변경이 어렵기 때문에 Phase 1(3단계)에서 함께 구현한다. 해당 화면(UI)은 Phase 2에서 만든다.
 
 ## Phase 2 — 상품 정보 및 거래 안정성
@@ -91,7 +107,7 @@
 | 작업 | 상태 |
 |---|---|
 | Pinata 업로드 Route Handler (`/api/ipfs`) | ☐ 대기 |
-| 상품 상태·사진 등록 화면 (샘플 CID를 실제 업로드로 교체) | ☐ 대기 |
+| 상품 상태·사진 등록 화면 (수동 업로드를 화면 업로드로 교체) | ☐ 대기 |
 | 과거 상품 상태 조회 | ☐ 대기 |
 | 판매자 환불, 분쟁 제기 화면 | ☐ 대기 |
 | 관리자 분쟁 중재 화면 | ☐ 대기 |
@@ -123,3 +139,4 @@
 | 2026-11-22 | Phase 1 · 2단계 완료: BSideNFT 구현, 테스트 37개 통과. architecture.md 4.1에 구현 세부 사항 추가 |
 | 2026-11-22 | 2단계 검토 보완: 에스크로 직접 전송 차단 추가, "최초 판매 자격" 용어 정리, 4단계 배포 자동화 기준 추가, 테스트 45개 통과 |
 | 2026-11-22 | Phase 1 · 3단계 완료: BSideEscrow 구현, 전체 테스트 106개 통과. architecture.md 4.2·4.4에 구현 세부 사항 추가 |
+| 2026-11-23 | Phase 1 · 4단계 완료: 배포·발행 스크립트 분리 구현, 로컬 배포 검증. 샘플 CID 기록 파일 계획 제거 (Pinata 수동 업로드 CID 사용) |

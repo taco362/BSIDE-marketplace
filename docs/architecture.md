@@ -88,17 +88,15 @@ b-side/
 │  │  └─ escrow.ts                # list, cancel, buy, confirm, claim, refund, dispute, resolve, withdraw
 │  ├─ wallet/signer.ts            # 트랜잭션 서명용 BrowserProvider(MetaMask)·Signer, 네트워크 확인 (client)
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
-│  └─ config/
-│     ├─ ipfs.ts                  # 공개 IPFS 게이트웨이 주소, CID → URL 변환
-│     └─ sampleCids.ts            # Phase 1 테스트용 샘플 CID (실제 업로드된 값)
-├─ samples/ipfs/                  # 테스트용 샘플 원본 (메타데이터·상태 기록 JSON, 이미지)
+│  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소, CID → URL 변환
 ├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
 │  ├─ hardhat.config.ts         # solc 0.8.28, sepolia 네트워크 (configVariable)
 │  ├─ contracts/BSideNFT.sol
 │  ├─ contracts/BSideEscrow.sol
 │  ├─ contracts/test/MockBuyer.sol # 테스트 전용 (재진입·ETH 수신 거부·NFT 수신 불가 구매자). 배포하지 않음
 │  ├─ test/
-│  └─ scripts/deploy.ts
+│  ├─ scripts/deploy.ts         # 배포 + 초기 설정 + lib/contracts 내보내기 (4.5)
+│  └─ scripts/mint.ts           # NFT 1개 발행 (배포와 분리, 4.5)
 └─ docs/
 ```
 
@@ -308,6 +306,42 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 - 판매 중 목록, 내 거래, 분쟁 목록, 토큰별 이력 같은 필터링은 컨트랙트가 아니라 서버의 `MarketReader`에서 수행한다 (6.1).
 - 이전 설계의 EnumerableSet, 주소별·토큰별 배열, ERC721Enumerable은 MVP 데이터 규모에서는 불필요하다고 판단해 제외했다. 쓰기 가스와 컨트랙트 복잡도를 줄이기 위함이다.
 
+### 4.5 배포와 발행 스크립트
+
+배포와 NFT 발행은 분리한다. 배포 스크립트는 NFT를 발행하지 않는다.
+
+| 스크립트 | 명령 (`contracts/`에서) | 하는 일 |
+|---|---|---|
+| 로컬 노드 | `npm run node` | Hardhat 로컬 노드 실행 (`http://127.0.0.1:8545`, chainId 31337) |
+| `scripts/deploy.ts` | `npm run deploy:local` | BSideNFT 배포 → BSideEscrow 배포 → `setEscrow` → 아티스트 등록 → `lib/contracts/`로 ABI·배포 정보 내보내기 |
+| `scripts/mint.ts` | `npm run mint:local` | `deployment.json`의 NFT 주소로 아티스트 계정이 NFT 1개 발행 |
+
+배포 인자 (환경 변수):
+- `CONFIRM_PERIOD_SECONDS`: 수령 승인 기한(초). 로컬 기본값은 300초(5분)다. 로컬이 아닌 네트워크에서는 기본값이 없어 반드시 지정해야 한다 (Sepolia 값은 미결정, proposal.md 8장).
+- `ARTIST_ADDRESSES`: 아티스트로 등록할 주소(쉼표 구분). 로컬 기본값은 계정 #1이고, 로컬이 아니면 기본값이 없다.
+- 배포 계정(계정 #0)이 두 컨트랙트의 관리자가 된다.
+
+발행 인자 (환경 변수, 모두 필수): `METADATA_URI`(`ipfs://<CID>` 형식), `INITIAL_PRICE_ETH`, `POLICY`(`PriceCap`|`Royalty`|`Free`), `POLICY_BPS`(Free는 생략 가능). 선택: `ARTIST_SIGNER_INDEX`(로컬 기본 1, 그 외 0). 스크립트는 형식만 미리 확인하고, 최종 검증은 컨트랙트가 한다.
+
+내보내기 결과 (`lib/contracts/`, 주소·ABI의 단일 출처):
+```json
+// deployment.json
+{
+  "network": "localhost",
+  "chainId": 31337,
+  "deployedAt": "ISO 8601",
+  "admin": "0x...",
+  "confirmPeriod": 300,
+  "contracts": {
+    "BSideNFT":    { "address": "0x...", "deployBlock": 1 },
+    "BSideEscrow": { "address": "0x...", "deployBlock": 2 }
+  }
+}
+```
+- `abi/BSideNFT.json`, `abi/BSideEscrow.json`: 컴파일 결과의 ABI만 저장한다.
+- `deployment.json`은 마지막으로 배포한 네트워크 하나만 기록한다. 배포할 때마다 덮어쓴다.
+- 로컬 노드는 다시 켜면 초기화되므로, 노드를 재시작한 뒤에는 다시 배포해야 한다. 새 노드에 처음 배포하면 주소가 항상 같다 (NFT `0x5FbDB2...0aa3`, Escrow `0xe7f172...0512`).
+
 ## 5. 정산과 NFT 전송
 
 ### 5.1 Pull payment (출금 방식)
@@ -396,19 +430,17 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 }
 ```
 
-### 6.4 Phase 1 테스트용 CID
+### 6.4 Phase 1의 CID 사용
 
-컨트랙트는 빈 CID를 거부한다. Phase 1에는 업로드 기능이 없으므로, **실제로 IPFS에서 조회할 수 있는 샘플 데이터**를 미리 올려 두고 그 CID를 사용한다.
+컨트랙트는 빈 CID를 거부한다. Phase 1에는 업로드 기능(6.3)이 없으므로 **Pinata에 수동으로 업로드한 실제 CID**를 사용한다.
 
-1. 샘플 원본을 `samples/ipfs/`에 저장소 파일로 둔다: 샘플 이미지, NFT 메타데이터 JSON(`image`가 샘플 이미지 CID를 가리킴), 상품 상태 기록 JSON. 샘플임을 알 수 있도록 이름·설명에 "[테스트용]"을 붙인다.
-2. 사용자가 Pinata 대시보드에서 샘플 파일을 업로드한다. 업로드에 쓰는 Pinata 키는 코드나 저장소에 넣지 않는다.
-3. 발급된 CID를 `lib/config/sampleCids.ts`에 기록한다. CID는 공개 정보이므로 커밋해도 된다.
-4. 공개 게이트웨이(`lib/config/ipfs.ts`)로 각 CID를 조회해 내용이 원본과 같은지 확인한다.
-
-- 화면에서는 샘플 CID에 "테스트용" 표시를 붙여 실제 상품 정보로 오인하지 않게 한다.
-- 컨트랙트 단위 테스트(Hardhat)는 IPFS를 조회하지 않으므로 비어 있지 않은 임의의 CID 문자열을 사용해도 된다. 샘플 CID는 화면 조회와 시연에 사용한다.
-- Phase 2에서 실제 업로드로 바꿔도 컨트랙트는 수정하지 않는다.
-- 선행 조건: 6단계 시작 전에 Pinata 계정과 샘플 업로드가 필요하다.
+- 별도의 샘플 CID 기록 파일이나 임시 CID 관리 로직은 두지 않는다. CID는 발행·판매 등록 시점에 직접 입력한다 (`scripts/mint.ts`의 `METADATA_URI`, 6단계 화면 입력).
+- 가짜·임시 CID로 NFT를 발행하지 않는다. 메타데이터 URI는 발행 후 변경할 수 없기 때문이다 (4.1).
+- 업로드 순서: 이미지 업로드 → 이미지 CID를 넣은 메타데이터 JSON(`name`, `description`, `image`) 업로드 → 메타데이터 CID로 발행.
+- 업로드에 쓰는 Pinata 키는 코드나 저장소에 넣지 않는다.
+- 컨트랙트 단위 테스트(Hardhat)는 IPFS를 조회하지 않으므로 비어 있지 않은 임의의 문자열을 사용한다. 테스트 체인은 매번 초기화되어 남지 않는다.
+- Phase 2에서 업로드 기능을 붙여도 컨트랙트는 수정하지 않는다.
+- 선행 조건: 6단계 시연 전에 Pinata 계정과 메타데이터·상태 기록 업로드가 필요하다.
 
 ## 7. 환경 변수와 비밀값
 
@@ -479,6 +511,6 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 프론트엔드:
 - `npm run lint`, `npm run build`
 - 비밀값 노출 점검: 빌드 후 `.next/static`(브라우저로 전달되는 파일)에서 `RPC_URL`, `PINATA_JWT` 값이 검색되지 않는지 확인
-- 샘플 CID 점검: `sampleCids.ts`의 모든 CID가 공개 게이트웨이에서 조회되는지 확인
+- CID 점검: 시연에 사용하는 메타데이터·상태 기록 CID가 공개 게이트웨이에서 조회되는지 발행·등록 전에 확인
 - 로컬 Hardhat 노드와 MetaMask 계정 3개(관리자·아티스트 / 판매자 / 구매자)로 흐름 A·B 수동 시연
 - Sepolia 배포 후 같은 시나리오 반복
