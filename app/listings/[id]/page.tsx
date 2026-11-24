@@ -20,9 +20,16 @@ export default function ListingPage({ params }: PageProps<"/listings/[id]">) {
 
 async function ListingDetail({ params }: Pick<PageProps<"/listings/[id]">, "params">) {
   const { id } = await params;
-  const item = /^[1-9][0-9]*$/.test(id) ? await getMarketReader().getListing(Number(id)) : null;
+  const reader = getMarketReader();
+  const item = /^[1-9][0-9]*$/.test(id) ? await reader.getListing(Number(id)) : null;
   if (!item) notFound();
   const { listing, token } = item;
+  const accounts = await reader.getAccounts([
+    token.artist,
+    listing.seller,
+    listing.buyer,
+    token.inEscrow ? null : token.owner,
+  ]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -36,7 +43,7 @@ async function ListingDetail({ params }: Pick<PageProps<"/listings/[id]">, "para
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">거래 정보</h2>
-        <ListingInfo listing={listing} />
+        <ListingInfo listing={listing} artist={token.artist} accounts={accounts} />
       </section>
 
       <section className="flex flex-col gap-3">
@@ -46,7 +53,7 @@ async function ListingDetail({ params }: Pick<PageProps<"/listings/[id]">, "para
             거래 이력 보기
           </Link>
         </div>
-        <TokenSummary token={token} />
+        <TokenSummary token={token} accounts={accounts} />
       </section>
     </div>
   );

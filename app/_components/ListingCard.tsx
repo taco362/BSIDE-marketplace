@@ -1,11 +1,20 @@
 import Link from "next/link";
-import { Address } from "@/components/ui/Address";
+import { AccountLabel } from "@/components/account/AccountLabel";
 import { PolicyBadge } from "@/components/token/PolicyBadge";
-import { formatEth } from "@/lib/domain/format";
-import type { ListingWithToken } from "@/lib/domain/types";
+import { accountOf } from "@/lib/domain/account";
+import { formatEth, isSameAddress } from "@/lib/domain/format";
+import type { AccountDirectory, ListingWithToken } from "@/lib/domain/types";
 
-/** 판매 목록 카드 */
-export function ListingCard({ item: { listing, token } }: { item: ListingWithToken }) {
+/** 판매 목록 카드: 아티스트(발행자)와 판매자(현재 등록자)를 나누어 표시 */
+export function ListingCard({
+  item: { listing, token },
+  accounts,
+}: {
+  item: ListingWithToken;
+  accounts: AccountDirectory;
+}) {
+  const sellerIsArtist = isSameAddress(listing.seller, token.artist);
+
   return (
     <Link
       href={`/listings/${listing.listingId}`}
@@ -24,9 +33,16 @@ export function ListingCard({ item: { listing, token } }: { item: ListingWithTok
           </span>
         )}
       </div>
-      <p className="mt-auto text-xs text-zinc-500">
-        판매자 <Address address={listing.seller} />
-      </p>
+      <dl className="mt-auto grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 text-sm">
+        <dt className="text-zinc-500">아티스트</dt>
+        <dd className="min-w-0">
+          <AccountLabel account={accountOf(accounts, token.artist)} />
+        </dd>
+        <dt className="text-zinc-500">판매자</dt>
+        <dd className="min-w-0">
+          {sellerIsArtist ? "아티스트 본인" : <AccountLabel account={accountOf(accounts, listing.seller)} />}
+        </dd>
+      </dl>
     </Link>
   );
 }

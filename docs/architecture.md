@@ -62,7 +62,8 @@ b-side/
 │  ├─ admin/                      # 아티스트 등록/회수, 분쟁 중재 (page.tsx + _components/)
 │  └─ api/ipfs/route.ts           # Pinata 업로드 (Phase 2)
 ├─ components/                    # 여러 페이지에서 재사용하는 UI
-│  ├─ ui/                         # 도메인과 무관한 기본 요소 (Address, DetailList, IpfsLink)
+│  ├─ ui/                         # 도메인과 무관한 기본 요소 (DetailList, IpfsLink, CopyButton)
+│  ├─ account/                    # AccountLabel (활동명·인증 표시·축약/전체 주소, D7)
 │  ├─ wallet/                     # ConnectButton (연결·네트워크 전환), NetworkGuard (6단계)
 │  ├─ listing/                    # ListingStatusBadge
 │  ├─ token/                      # TokenSummary, PolicyBadge
@@ -78,7 +79,8 @@ b-side/
 │  ├─ domain/                     # 순수 타입·함수 (서버·클라이언트 공용, 외부 호출 없음)
 │  │  ├─ types.ts                 # Listing, TokenInfo, TradeEvent, Policy, Status
 │  │  ├─ policy.ts                # 정책 표시 이름, 가격 상한 미리 계산 (화면 안내용)
-│  │  └─ format.ts                # wei↔ETH 변환, 주소 축약
+│  │  ├─ format.ts                # wei↔ETH 변환, 주소 축약
+│  │  └─ account.ts               # 계정 표시 정보 찾기, 표시 대상 주소 모으기
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
 │  │  ├─ chain/provider.ts        # 서버 조회용 JsonRpcProvider (server-only, RPC_URL 사용)
@@ -86,6 +88,7 @@ b-side/
 │  │  ├─ chain/events.ts          # 토큰별 이벤트 이력 조회, 로그 실패 시 대체 이력 (server-only)
 │  │  ├─ chain/mappers.ts         # 컨트랙트 반환값 → 도메인 타입 변환 (server-only)
 │  │  ├─ chain/errors.ts          # 조회 오류 → 민감 정보 없는 안내 문구 (server-only)
+│  │  ├─ chain/accounts.ts        # 주소별 활동명·인증 여부 조회 (server-only)
 │  │  └─ index.ts                 # getMarketReader(): chainReader 반환 (구현체 선택 로직 없음)
 │  ├─ tx/                         # 쓰기 전용 (client), 컨트랙트별로 분리
 │  │  ├─ nft.ts                   # mint, approve, 아티스트 등록·회수
@@ -154,7 +157,9 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 
 | 함수 | 호출자 | 설명 |
 |---|---|---|
-| `grantRole(ARTIST_ROLE, addr)` / `revokeRole` | 관리자 | 아티스트 등록·회수 (D7) |
+| `registerArtist(addr, name)` | 관리자 | 아티스트 승인 + 활동명 등록 (D7). 이미 승인된 주소면 활동명만 갱신 |
+| `revokeRole(ARTIST_ROLE, addr)` | 관리자 | 아티스트 승인 회수 (D7). 활동명 기록은 남는다 |
+| `artistName(addr)` | 누구나 | 등록된 활동명 (없으면 빈 문자열) |
 | `mint(uri, initialPrice, policy, policyBps)` | `ARTIST_ROLE` | msg.sender에게 발행. TokenInfo 기록 |
 | `setEscrow(addr)` | 관리자 | 에스크로 주소 등록. **1회만 호출 가능** |
 | `getTokenInfo(id)` | 누구나 | 토큰 정보 조회 |
@@ -168,8 +173,15 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 - `constructor(admin)`: 관리자 주소를 받아 `DEFAULT_ADMIN_ROLE`을 부여한다. 관리자도 `ARTIST_ROLE`이 없으면 발행할 수 없다.
 - 발행은 `_mint`를 사용한다. 받는 주소가 발행자 본인이므로 수신 콜백(`_safeMint`)이 필요 없다.
 - 정책 범위는 상수로 공개한다: `PRICE_CAP_MIN_BPS`(10000), `PRICE_CAP_MAX_BPS`(15000), `ROYALTY_MIN_BPS`(100), `ROYALTY_MAX_BPS`(1000).
-- 오류는 custom error로 반환한다: `EmptyTokenURI`, `ZeroInitialPrice`, `InvalidPolicyBps(policy, bps)`, `EscrowAlreadySet`, `ZeroAddress`, `DirectTransferToEscrow`. 권한 오류는 OpenZeppelin의 `AccessControlUnauthorizedAccount`, 존재하지 않는 토큰은 `ERC721NonexistentToken`이다.
-- 이벤트: ERC721 표준 `Transfer`(발행·전송), ERC4906 `MetadataUpdate`(URI 설정), `EscrowSet`
+- 오류는 custom error로 반환한다: `EmptyTokenURI`, `ZeroInitialPrice`, `InvalidPolicyBps(policy, bps)`, `EscrowAlreadySet`, `ZeroAddress`, `DirectTransferToEscrow`, `EmptyArtistName`, `ArtistNameTooLong(length)`. 권한 오류는 OpenZeppelin의 `AccessControlUnauthorizedAccount`, 존재하지 않는 토큰은 `ERC721NonexistentToken`이다.
+- 이벤트: ERC721 표준 `Transfer`(발행·전송), ERC4906 `MetadataUpdate`(URI 설정), `EscrowSet`, `ArtistRegistered(artist, name)`
+
+아티스트 활동명 (D7):
+- `mapping(address => string) public artistName`. 길이는 1 ~ `MAX_ARTIST_NAME_BYTES`(64바이트, 한글 약 21자).
+- 화면의 인증 표시는 활동명 유무가 아니라 현재 `hasRole(ARTIST_ROLE, addr)`로 판단한다. 회수 후에는 활동명만 표시되고 인증 표시는 사라진다.
+- 아티스트 승인은 `registerArtist`로만 한다(배포 스크립트, 6단계 관리자 화면). OpenZeppelin 기본 `grantRole(ARTIST_ROLE, …)`도 호출은 가능하지만 사용하지 않으며, 이 경로로 승인된 주소는 활동명이 비어 있어 화면에 축약 주소 + 인증 표시로 나온다. 컨트랙트에서 막지 않는 것은 단순함을 위한 결정이다.
+- 활동명은 발행된 NFT의 TokenInfo와 무관하다. 정책 불변(4.1)에 영향이 없다.
+- 아티스트 신원 확인·신청 접수는 플랫폼 밖에서 한다 (DB 없음).
 
 발행 검증:
 - `uri`는 비어 있으면 안 된다.
@@ -329,6 +341,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 배포 인자 (환경 변수):
 - `CONFIRM_PERIOD_SECONDS`: 수령 승인 기한(초). 로컬 기본값은 300초(5분)다. 로컬이 아닌 네트워크에서는 기본값이 없어 반드시 지정해야 한다 (Sepolia 값은 미결정, proposal.md 8장).
 - `ARTIST_ADDRESSES`: 아티스트로 등록할 주소(쉼표 구분). 로컬 기본값은 계정 #1이고, 로컬이 아니면 기본값이 없다.
+- `ARTIST_NAMES`: 활동명(쉼표 구분, `ARTIST_ADDRESSES`와 같은 순서·개수, 필수). 로컬 기본값은 "로컬 테스트 아티스트". 배포 스크립트는 `registerArtist`로 등록한다.
 - 배포 계정(계정 #0)이 두 컨트랙트의 관리자가 된다.
 
 발행 인자 (환경 변수, 모두 필수): `METADATA_URI`(`ipfs://<CID>` 형식), `INITIAL_PRICE_ETH`, `POLICY`(`PriceCap`|`Royalty`|`Free`), `POLICY_BPS`(Free는 생략 가능). 선택: `ARTIST_SIGNER_INDEX`(로컬 기본 1, 그 외 0). 스크립트는 형식만 미리 확인하고, 최종 검증은 컨트랙트가 한다.
@@ -426,6 +439,9 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - `error.tsx`는 개발 모드에서만 이 안내 문구를 보여주고, 프로덕션에서는 서버 로그 확인용 `digest`만 보여준다 (프로덕션에서는 Next.js가 서버 오류 메시지를 숨긴다).
 - `RPC_URL`은 Provider를 처음 만들 때 한 번 읽는다. `.env.local`을 바꾸면 웹 서버를 재시작한다.
 - 토큰의 현재 소유자가 에스크로 주소이면 `Token.inEscrow`로 표시하고 화면에는 "에스크로 보관 중"으로 보여준다.
+- 계정 표시 (D7): `getAccounts(addresses)`가 화면에 나오는 주소(아티스트, 판매자, 구매자, 소유자, 이력의 당사자)만 중복 없이 모아 `artistName`·`hasRole`을 조회하고 `AccountDirectory`(소문자 주소 → `AccountProfile`)로 돌려준다 (`chain/accounts.ts`). 페이지는 이를 props로 넘기고, `components/account/AccountLabel`이 같은 규칙으로 표시한다.
+  - 활동명 있음 → 활동명 (+ 승인 중이면 ✓ 인증 표시), 없음 → 축약 주소. 전체 주소는 항상 title로 볼 수 있고, 상세 화면에서는 아래 줄에 전체 주소와 복사 버튼을 둔다(목록 카드는 링크 안이므로 생략).
+  - "아티스트"(발행자)와 "판매자"(현재 등록자)는 따로 표시하고, 같은 주소면 "아티스트 본인"으로 표시한다.
 - 최초 판매 표시(4.1): `lib/domain/policy.ts`의 `primarySaleState`가 `primaryEnded`와 거래 기록(`isPrimary && COMPLETED`)으로 "최초 판매 자격 있음 / 플랫폼 최초 판매 완료 / 외부 이전으로 최초 판매 자격 종료"를 구분한다.
 
 ### 6.2 쓰기 흐름
@@ -536,7 +552,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 ## 9. 테스트 전략
 
 컨트랙트 테스트 (`cd contracts && npx hardhat test`):
-- **BSideNFT**: 아티스트 권한 검사, 정책별 bps 범위 검증, 빈 URI·0 가격 거부, 정책 불변, `setEscrow` 1회 제한, 에스크로 직접 전송 차단(소유자·대리인, `transferFrom`·`safeTransferFrom`), 최초 판매 자격 판정(외부 전송, 대리인 전송, 에스크로 예치·반환, 거래 완료, 재판매자 예치·반환)
+- **BSideNFT**: 아티스트 권한 검사, 활동명 등록(권한 부여·갱신·관리자 전용·0 주소·빈 이름·64바이트 경계·회수 후 기록 유지), 정책별 bps 범위 검증, 빈 URI·0 가격 거부, 정책 불변, `setEscrow` 1회 제한, 에스크로 직접 전송 차단(소유자·대리인, `transferFrom`·`safeTransferFrom`), 최초 판매 자격 판정(외부 전송, 대리인 전송, 에스크로 예치·반환, 거래 완료, 재판매자 예치·반환)
 - **BSideNFT + BSideEscrow 통합**: 실제 에스크로의 `list`·취소·완료를 거칠 때 최초 판매 자격이 4.1의 표대로 바뀌는지
 - **BSideEscrow 상태 전이**: 표 4.3의 모든 전이에 대해 허용 케이스와 거부 케이스(잘못된 호출자, 잘못된 상태)
 - **기한 경계**: Hardhat 시간 조작으로 `deadline − 1`, `deadline`, `deadline + 1` 시점의 분쟁 제기와 자동 정산 검증

@@ -18,6 +18,9 @@ contract BSideNFT is ERC721URIStorage, AccessControl {
     uint16 public constant ROYALTY_MIN_BPS = 100; // 1%
     uint16 public constant ROYALTY_MAX_BPS = 1_000; // 10%
 
+    /// @notice 아티스트 활동명 최대 길이 (UTF-8 바이트, 한글 약 21자)
+    uint256 public constant MAX_ARTIST_NAME_BYTES = 64;
+
     /// @notice 재판매 정책: 정가 보호형, 창작자 상생형, 자유 거래형
     enum Policy {
         PriceCap,
@@ -45,13 +48,20 @@ contract BSideNFT is ERC721URIStorage, AccessControl {
     /// @notice 에스크로 컨트랙트 주소. setEscrow로 1회만 설정할 수 있다.
     address public escrow;
 
+    /// @notice 관리자가 등록한 아티스트 활동명 (D7). 승인이 회수되어도 기록은 남는다.
+    ///         인증 여부는 hasRole(ARTIST_ROLE, 주소)로 판단한다.
+    mapping(address artist => string) public artistName;
+
     uint256 private _totalMinted;
     mapping(uint256 tokenId => TokenInfo) private _tokenInfos;
     mapping(uint256 tokenId => bool) private _primaryEnded;
 
     event EscrowSet(address indexed escrow);
+    event ArtistRegistered(address indexed artist, string name);
 
     error EmptyTokenURI();
+    error EmptyArtistName();
+    error ArtistNameTooLong(uint256 length);
     error ZeroInitialPrice();
     error InvalidPolicyBps(Policy policy, uint16 policyBps);
     error EscrowAlreadySet();
@@ -98,6 +108,20 @@ contract BSideNFT is ERC721URIStorage, AccessControl {
     }
 
     // ───────────────────────── 관리자 ─────────────────────────
+
+    /// @notice 아티스트 승인과 활동명 등록을 한 번에 한다 (D7).
+    ///         이미 승인된 주소에 다시 호출하면 활동명만 갱신된다. 회수는 revokeRole(ARTIST_ROLE, artist)을 사용한다.
+    /// @param name 활동명 (1 ~ MAX_ARTIST_NAME_BYTES 바이트)
+    function registerArtist(address artist, string calldata name) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (artist == address(0)) revert ZeroAddress();
+        uint256 length = bytes(name).length;
+        if (length == 0) revert EmptyArtistName();
+        if (length > MAX_ARTIST_NAME_BYTES) revert ArtistNameTooLong(length);
+
+        artistName[artist] = name;
+        _grantRole(ARTIST_ROLE, artist);
+        emit ArtistRegistered(artist, name);
+    }
 
     /// @notice 에스크로 컨트랙트 주소를 등록한다. 1회만 호출할 수 있다.
     function setEscrow(address escrow_) external onlyRole(DEFAULT_ADMIN_ROLE) {

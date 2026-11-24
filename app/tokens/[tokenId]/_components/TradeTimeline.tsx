@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { Address } from "@/components/ui/Address";
+import { AccountLabel } from "@/components/account/AccountLabel";
 import { IpfsLink } from "@/components/ui/IpfsLink";
+import { accountOf } from "@/lib/domain/account";
 import { CANCEL_REASON_LABELS, formatEth, formatTimestamp } from "@/lib/domain/format";
-import type { TokenHistory, TradeEvent } from "@/lib/domain/types";
+import type { AccountDirectory, TokenHistory, TradeEvent } from "@/lib/domain/types";
 
 /** NFT별 플랫폼 거래 이력 (에스크로 이벤트 타임라인) */
-export function TradeTimeline({ history }: { history: TokenHistory }) {
+export function TradeTimeline({ history, accounts }: { history: TokenHistory; accounts: AccountDirectory }) {
   return (
     <div className="flex flex-col gap-3">
       {history.source === "listings" && (
@@ -25,7 +26,7 @@ export function TradeTimeline({ history }: { history: TokenHistory }) {
                 <span className="font-medium">{EVENT_TITLES[event.kind]}</span>
                 <span className="text-zinc-500"> · 거래 #{event.listingId}</span>
               </p>
-              <div className="text-sm text-zinc-600 dark:text-zinc-400">{describe(event)}</div>
+              <div className="text-sm text-zinc-600 dark:text-zinc-400">{describe(event, accounts)}</div>
               <p className="text-xs text-zinc-500">
                 {event.timestamp !== null ? formatTimestamp(event.timestamp) : "시각 알 수 없음"}
                 {event.txHash && (
@@ -51,12 +52,13 @@ const EVENT_TITLES: Record<TradeEvent["kind"], string> = {
   Cancelled: "거래 취소",
 };
 
-function describe(event: TradeEvent): ReactNode {
+function describe(event: TradeEvent, accounts: AccountDirectory): ReactNode {
+  const account = (address: string) => <AccountLabel account={accountOf(accounts, address)} />;
   switch (event.kind) {
     case "Listed":
       return (
         <>
-          <Address address={event.seller} /> · {formatEth(event.price)} · {event.isPrimary ? "최초 판매" : "재판매"}
+          {account(event.seller)} · {formatEth(event.price)} · {event.isPrimary ? "최초 판매" : "재판매"}
           <br />
           상태 기록 <IpfsLink uri={event.conditionCID} />
         </>
@@ -64,13 +66,13 @@ function describe(event: TradeEvent): ReactNode {
     case "Purchased":
       return (
         <>
-          구매자 <Address address={event.buyer} />
+          구매자 {account(event.buyer)}
         </>
       );
     case "Disputed":
       return (
         <>
-          구매자 <Address address={event.buyer} />가 이의 제기
+          구매자 {account(event.buyer)} 이의 제기
         </>
       );
     case "DisputeResolved":
@@ -78,7 +80,7 @@ function describe(event: TradeEvent): ReactNode {
     case "Completed":
       return (
         <>
-          <Address address={event.seller} /> → <Address address={event.buyer} /> · {formatEth(event.price)}
+          {account(event.seller)} → {account(event.buyer)} · {formatEth(event.price)}
           {event.royalty !== null && event.royalty > BigInt(0) && <> · 로열티 {formatEth(event.royalty)}</>}
         </>
       );

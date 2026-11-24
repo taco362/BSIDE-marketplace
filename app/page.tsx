@@ -15,16 +15,19 @@ export default function Home() {
 }
 
 async function ActiveListings() {
-  const items = await getMarketReader().getActiveListings();
+  const reader = getMarketReader();
+  const items = await reader.getActiveListings();
 
   if (items.length === 0) {
     return <p className="text-sm text-zinc-500">판매 중인 상품이 없습니다.</p>;
   }
+  const accounts = await reader.getAccounts(items.flatMap((i) => [i.token.artist, i.listing.seller]));
+
   return (
     <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
         <li key={item.listing.listingId}>
-          <ListingCard item={item} />
+          <ListingCard item={item} accounts={accounts} />
         </li>
       ))}
     </ul>

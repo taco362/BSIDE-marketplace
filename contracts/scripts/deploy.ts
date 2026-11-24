@@ -10,6 +10,8 @@
  * 환경 변수 (선택)
  *   CONFIRM_PERIOD_SECONDS  수령 승인 기한(초). 로컬 기본값 300초. 로컬이 아니면 반드시 지정해야 한다.
  *   ARTIST_ADDRESSES        아티스트로 등록할 주소 (쉼표 구분). 로컬 기본값은 계정 #1.
+ *   ARTIST_NAMES            아티스트 활동명 (쉼표 구분, ARTIST_ADDRESSES와 같은 순서·개수). 로컬 기본값 "로컬 테스트 아티스트".
+ *                           아티스트는 registerArtist(주소, 활동명)로 등록한다 (D7). grantRole은 사용하지 않는다.
  */
 import { artifacts, network } from "hardhat";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -18,6 +20,8 @@ import { fileURLToPath } from "node:url";
 
 const LOCAL_CHAIN_ID = 31337n;
 const DEFAULT_LOCAL_CONFIRM_PERIOD = 300n; // 5분 (로컬 시연용)
+const DEFAULT_LOCAL_ARTIST_NAME = "로컬 테스트 아티스트";
+const MAX_ARTIST_NAME_BYTES = 64; // BSideNFT.MAX_ARTIST_NAME_BYTES
 
 const OUT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../lib/contracts");
 
@@ -29,7 +33,7 @@ const deployer = signers[0];
 
 // ── 배포 인자 결정 ──
 const confirmPeriod = resolveConfirmPeriod();
-const artistAddresses = resolveArtists();
+const artists = resolveArtists();
 
 console.log(`네트워크: ${networkName} (chainId ${chainId})`);
 console.log(`배포자(관리자): ${deployer.address}`);
@@ -50,12 +54,11 @@ console.log(`BSideEscrow ${escrowAddress} (block ${escrowReceipt!.blockNumber})`
 await (await nft.getFunction("setEscrow")(escrowAddress)).wait();
 console.log("setEscrow 완료 (1회만 가능)");
 
-const ARTIST_ROLE: string = await nft.getFunction("ARTIST_ROLE")();
-for (const artist of artistAddresses) {
-  await (await nft.getFunction("grantRole")(ARTIST_ROLE, artist)).wait();
-  console.log(`아티스트 등록: ${artist}`);
+for (const { address, name } of artists) {
+  await (await nft.getFunction("registerArtist")(address, name)).wait();
+  console.log(`아티스트 등록: ${address} (${name})`);
 }
-if (artistAddresses.length === 0) {
+if (artists.length === 0) {
   console.log("등록할 아티스트가 없습니다. 필요하면 ARTIST_ADDRESSES를 지정하거나 관리자 화면에서 등록하세요.");
 }
 
@@ -93,14 +96,27 @@ function resolveConfirmPeriod(): bigint {
   return BigInt(raw);
 }
 
-function resolveArtists(): string[] {
-  const raw = process.env.ARTIST_ADDRESSES;
-  if (raw === undefined || raw.trim() === "") {
-    return isLocal && signers[1] ? [signers[1].address] : [];
+function resolveArtists(): { address: string; name: string }[] {
+  const rawAddresses = process.env.ARTIST_ADDRESSES?.trim() ?? "";
+  const rawNames = process.env.ARTIST_NAMES?.trim() ?? "";
+  if (rawAddresses === "") {
+    if (rawNames !== "") throw new Error("ARTIST_NAMES를 쓰려면 ARTIST_ADDRESSES도 지정해야 합니다.");
+    return isLocal && signers[1] ? [{ address: signers[1].address, name: DEFAULT_LOCAL_ARTIST_NAME }] : [];
   }
-  const list = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  for (const a of list) {
+
+  const addresses = rawAddresses.split(",").map((s) => s.trim()).filter(Boolean);
+  const names = rawNames.split(",").map((s) => s.trim()).filter(Boolean);
+  if (names.length !== addresses.length) {
+    throw new Error(
+      `ARTIST_NAMES(${names.length}개)는 ARTIST_ADDRESSES(${addresses.length}개)와 개수가 같아야 합니다. 활동명은 필수입니다.`,
+    );
+  }
+  return addresses.map((a, i) => {
     if (!ethers.isAddress(a)) throw new Error(`ARTIST_ADDRESSES에 올바르지 않은 주소가 있습니다: ${a}`);
-  }
-  return list.map((a) => ethers.getAddress(a));
+    const length = Buffer.byteLength(names[i], "utf8");
+    if (length > MAX_ARTIST_NAME_BYTES) {
+      throw new Error(`활동명은 ${MAX_ARTIST_NAME_BYTES}바이트 이하여야 합니다: ${names[i]} (${length}바이트)`);
+    }
+    return { address: ethers.getAddress(a), name: names[i] };
+  });
 }

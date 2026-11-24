@@ -95,6 +95,89 @@ describe("BSideNFT", () => {
     });
   });
 
+  describe("아티스트 활동명 등록 (D7)", () => {
+    it("registerArtist는 아티스트 권한 부여와 활동명 기록을 함께 하고, 등록된 아티스트는 발행할 수 있다", async () => {
+      const { nft, admin, user, ARTIST_ROLE } = await networkHelpers.loadFixture(deployFixture);
+      await expect(nft.connect(admin).registerArtist(user.address, "실리카겔"))
+        .to.emit(nft, "ArtistRegistered")
+        .withArgs(user.address, "실리카겔");
+
+      expect(await nft.hasRole(ARTIST_ROLE, user.address)).to.equal(true);
+      expect(await nft.artistName(user.address)).to.equal("실리카겔");
+      await expect(nft.connect(user).mint(URI, PRICE, Free, 0)).to.not.be.revert(ethers);
+    });
+
+    it("이미 승인된 아티스트에게 다시 호출하면 활동명만 갱신된다", async () => {
+      const { nft, admin, user, ARTIST_ROLE } = await networkHelpers.loadFixture(deployFixture);
+      await nft.connect(admin).registerArtist(user.address, "이전 이름");
+      await expect(nft.connect(admin).registerArtist(user.address, "새 이름"))
+        .to.emit(nft, "ArtistRegistered")
+        .withArgs(user.address, "새 이름");
+
+      expect(await nft.artistName(user.address)).to.equal("새 이름");
+      expect(await nft.hasRole(ARTIST_ROLE, user.address)).to.equal(true);
+    });
+
+    it("관리자가 아니면 등록할 수 없다 (아티스트 본인 포함)", async () => {
+      const { nft, artist, user } = await networkHelpers.loadFixture(deployFixture);
+      await expect(nft.connect(artist).registerArtist(artist.address, "자기 등록"))
+        .to.be.revertedWithCustomError(nft, "AccessControlUnauthorizedAccount")
+        .withArgs(artist.address, await nft.DEFAULT_ADMIN_ROLE());
+      await expect(nft.connect(user).registerArtist(user.address, "사용자")).to.be.revertedWithCustomError(
+        nft,
+        "AccessControlUnauthorizedAccount",
+      );
+    });
+
+    it("0 주소와 빈 활동명은 거부된다", async () => {
+      const { nft, admin, user } = await networkHelpers.loadFixture(deployFixture);
+      await expect(nft.connect(admin).registerArtist(ethers.ZeroAddress, "이름")).to.be.revertedWithCustomError(
+        nft,
+        "ZeroAddress",
+      );
+      await expect(nft.connect(admin).registerArtist(user.address, "")).to.be.revertedWithCustomError(
+        nft,
+        "EmptyArtistName",
+      );
+    });
+
+    it("활동명 길이 경계: 64바이트는 허용, 65바이트는 거부 (한글은 글자당 3바이트)", async () => {
+      const { nft, admin, user, buyer } = await networkHelpers.loadFixture(deployFixture);
+      expect(await nft.MAX_ARTIST_NAME_BYTES()).to.equal(64n);
+
+      await expect(nft.connect(admin).registerArtist(user.address, "a".repeat(64))).to.not.be.revert(ethers);
+      await expect(nft.connect(admin).registerArtist(user.address, "a".repeat(65)))
+        .to.be.revertedWithCustomError(nft, "ArtistNameTooLong")
+        .withArgs(65n);
+
+      await expect(nft.connect(admin).registerArtist(buyer.address, "가".repeat(21))).to.not.be.revert(ethers); // 63바이트
+      await expect(nft.connect(admin).registerArtist(buyer.address, "가".repeat(22)))
+        .to.be.revertedWithCustomError(nft, "ArtistNameTooLong")
+        .withArgs(66n);
+    });
+
+    it("승인을 회수하면 발행할 수 없고 활동명 기록은 남는다. 다시 등록하면 승인된다", async () => {
+      const { nft, admin, user, ARTIST_ROLE } = await networkHelpers.loadFixture(deployFixture);
+      await nft.connect(admin).registerArtist(user.address, "활동명");
+      await nft.connect(admin).revokeRole(ARTIST_ROLE, user.address);
+
+      expect(await nft.hasRole(ARTIST_ROLE, user.address)).to.equal(false);
+      expect(await nft.artistName(user.address)).to.equal("활동명");
+      await expect(nft.connect(user).mint(URI, PRICE, Free, 0)).to.be.revertedWithCustomError(
+        nft,
+        "AccessControlUnauthorizedAccount",
+      );
+
+      await nft.connect(admin).registerArtist(user.address, "활동명");
+      expect(await nft.hasRole(ARTIST_ROLE, user.address)).to.equal(true);
+    });
+
+    it("grantRole로만 승인된 아티스트는 활동명이 비어 있다 (화면은 주소로 표시)", async () => {
+      const { nft, artist } = await networkHelpers.loadFixture(deployFixture);
+      expect(await nft.artistName(artist.address)).to.equal("");
+    });
+  });
+
   describe("발행", () => {
     it("토큰 ID는 1부터 순서대로 붙고, 발행자에게 지급되며 정보가 기록된다", async () => {
       const { nft, artist, otherArtist } = await networkHelpers.loadFixture(deployFixture);
@@ -173,6 +256,7 @@ describe("BSideNFT", () => {
           "approve",
           "grantRole",
           "mint",
+          "registerArtist", // 아티스트 권한·활동명만 다룬다 (TokenInfo 수정 아님)
           "renounceRole",
           "revokeRole",
           "safeTransferFrom",

@@ -49,6 +49,18 @@ export interface Listing {
   deadline: number | null;
 }
 
+/** 화면에 표시할 계정 정보 (D7: 관리자가 등록한 아티스트 활동명과 인증 여부) */
+export interface AccountProfile {
+  address: string;
+  /** 관리자가 등록한 활동명. 등록 기록이 없으면 null (승인 회수 후에도 남는다) */
+  artistName: string | null;
+  /** 현재 아티스트 권한(ARTIST_ROLE)이 있는지 = 인증 표시 여부 */
+  verifiedArtist: boolean;
+}
+
+/** 소문자 주소 → 계정 정보 */
+export type AccountDirectory = Record<string, AccountProfile>;
+
 export interface ListingWithToken {
   listing: Listing;
   token: Token;

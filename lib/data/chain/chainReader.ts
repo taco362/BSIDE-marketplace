@@ -14,6 +14,7 @@ import type { Contract } from "ethers";
 import { getEscrowContract, getNftContract } from "@/lib/contracts";
 import type { Listing, ListingWithToken, Token, TokenHistory } from "@/lib/domain/types";
 import type { MarketReader } from "../reader";
+import { readAccounts } from "./accounts";
 import { toChainReadError } from "./errors";
 import { eventsFromListings, readTokenEvents } from "./events";
 import { toListing, toToken, type RawListingView, type RawTokenView } from "./mappers";
@@ -140,4 +141,6 @@ export const chainReader: MarketReader = {
       return { source: "listings", events: eventsFromListings(listings) };
     }
   }),
+
+  getAccounts: safely(readAccounts),
 };

@@ -39,6 +39,7 @@ npm run dev
 ```
 
 - `setup:local` = `deploy:local`(배포·초기 설정·`lib/contracts/` 내보내기) + `seed:local`(발행 → 판매 등록).
+- 배포 시 계정 #1이 활동명 "로컬 테스트 아티스트"로 승인됩니다. 바꾸려면 `ARTIST_ADDRESSES`와 `ARTIST_NAMES`(같은 개수, 쉼표 구분)를 함께 지정합니다.
 - 기본 발행 값은 정가 보호형 120%, 최초 판매가 0.05 ETH입니다. 바꾸려면 `INITIAL_PRICE_ETH`, `POLICY`, `POLICY_BPS`를 함께 지정합니다.
 - CID는 Pinata에 실제로 업로드한 값만 사용합니다 (가짜 CID 금지). 상태 기록 JSON의 `tokenId`·`seller`는 새 노드 기준 `1`·계정 #1(`0x7099…79C8`)입니다.
 - 발행만 따로 하려면 `npm run mint:local`, 배포만 하려면 `npm run deploy:local`을 사용합니다.
