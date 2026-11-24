@@ -22,5 +22,6 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Geist는 라틴 문자만 포함하므로 한글은 시스템 글꼴로 표시한다 */
+  font-family: var(--font-geist-sans), "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
 }

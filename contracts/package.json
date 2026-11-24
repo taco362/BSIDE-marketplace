@@ -10,7 +10,9 @@
     "clean": "hardhat clean",
     "node": "hardhat node",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
-    "mint:local": "hardhat run scripts/mint.ts --network localhost"
+    "mint:local": "hardhat run scripts/mint.ts --network localhost",
+    "seed:local": "hardhat run scripts/seed.ts --network localhost",
+    "setup:local": "npm run deploy:local && npm run seed:local"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox-mocha-ethers": "^4.0.0",

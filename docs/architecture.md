@@ -3,7 +3,7 @@
 > 이 문서는 B-SIDE를 **어떻게 구현하는가**를 정의한다.
 > 서비스 요구사항과 정책 결정(D1~D10)은 [proposal.md](proposal.md)가 기준이며, 이 문서는 그 결정을 따른다.
 > 정책과 이 문서가 충돌하면 proposal.md를 우선하고, 이 문서를 수정한다.
-> 상태: 설계 확정, 구현 전 (진행 상황은 [progress.md](progress.md))
+> 상태: 설계 확정, 구현 진행 중 (진행 상황은 [progress.md](progress.md))
 
 ## 1. 설계 원칙
 
@@ -49,25 +49,26 @@
 ```
 b-side/
 ├─ app/                           # 라우트: 데이터를 불러와 컴포넌트를 조립만 한다
-│  ├─ layout.tsx                  # WalletProvider로 감싼다
-│  ├─ page.tsx                    # 판매 중 상품 목록
+│  ├─ layout.tsx                  # 공통 헤더 (ConnectButton)
+│  ├─ page.tsx                    # 판매 중 상품 목록 (+ _components/ListingCard)
+│  ├─ error.tsx, not-found.tsx    # 조회 실패, 없는 거래·토큰
 │  ├─ listings/[id]/
 │  │  ├─ page.tsx                 # 거래 상세 (조회 + 조립)
-│  │  └─ _components/             # 이 페이지 전용 (예: ListingActions — 상태·역할별 버튼)
-│  ├─ tokens/[tokenId]/page.tsx   # NFT 정보, 정책, 거래 이력
+│  │  └─ _components/             # 이 페이지 전용 (ListingInfo, 6단계: ListingActions — 상태·역할별 버튼)
+│  ├─ tokens/[tokenId]/           # NFT 정보, 정책, 거래 이력 (page.tsx + _components/TokenListingsTable, TradeTimeline)
 │  ├─ mint/                       # 아티스트 NFT 발행 (page.tsx + _components/MintForm)
 │  ├─ sell/                       # 보유 NFT 선택 → 판매 등록 (page.tsx + _components/)
 │  ├─ my/page.tsx                 # 내 NFT, 판매·구매 거래, 출금
 │  ├─ admin/                      # 아티스트 등록/회수, 분쟁 중재 (page.tsx + _components/)
 │  └─ api/ipfs/route.ts           # Pinata 업로드 (Phase 2)
 ├─ components/                    # 여러 페이지에서 재사용하는 UI
-│  ├─ ui/                         # 도메인과 무관한 기본 요소 (Button, Card, Badge, Spinner)
-│  ├─ wallet/                     # ConnectButton, NetworkGuard
-│  ├─ listing/                    # ListingCard, ListingStatusBadge, PriceTag
-│  ├─ token/                      # TokenSummary, PolicyBadge, TradeTimeline
+│  ├─ ui/                         # 도메인과 무관한 기본 요소 (Address, DetailList, IpfsLink)
+│  ├─ wallet/                     # ConnectButton (연결·네트워크 전환), NetworkGuard (6단계)
+│  ├─ listing/                    # ListingStatusBadge
+│  ├─ token/                      # TokenSummary, PolicyBadge
 │  └─ tx/                         # TxStatus (서명 대기·전송·성공·실패 표시)
 ├─ hooks/                         # 클라이언트 상태 훅
-│  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (WalletProvider context)
+│  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (모듈 단위 저장소 + useSyncExternalStore, 6.5)
 │  └─ useTx.ts                    # 트랜잭션 진행 상태 관리, 성공 시 router.refresh()
 ├─ lib/
 │  ├─ contracts/                  # ★ 컨트랙트 주소·ABI의 단일 출처 (Provider/Signer는 만들지 않음)
@@ -81,14 +82,17 @@ b-side/
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
 │  │  ├─ chain/provider.ts        # 서버 조회용 JsonRpcProvider (server-only, RPC_URL 사용)
-│  │  ├─ chain/chainReader.ts     # 블록체인 조회 구현체 (server-only)
+│  │  ├─ chain/chainReader.ts     # 블록체인 조회 구현체: 현재 상태 조회 + MarketReader (server-only)
+│  │  ├─ chain/events.ts          # 토큰별 이벤트 이력 조회, 로그 실패 시 대체 이력 (server-only)
+│  │  ├─ chain/mappers.ts         # 컨트랙트 반환값 → 도메인 타입 변환 (server-only)
+│  │  ├─ chain/errors.ts          # 조회 오류 → 민감 정보 없는 안내 문구 (server-only)
 │  │  └─ index.ts                 # getMarketReader(): chainReader 반환 (구현체 선택 로직 없음)
 │  ├─ tx/                         # 쓰기 전용 (client), 컨트랙트별로 분리
 │  │  ├─ nft.ts                   # mint, approve, 아티스트 등록·회수
 │  │  └─ escrow.ts                # list, cancel, buy, confirm, claim, refund, dispute, resolve, withdraw
-│  ├─ wallet/signer.ts            # 트랜잭션 서명용 BrowserProvider(MetaMask)·Signer, 네트워크 확인 (client)
+│  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer(6단계) (client)
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
-│  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소, CID → URL 변환
+│  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소(Pinata 공개 게이트웨이), CID → URL 변환
 ├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
 │  ├─ hardhat.config.ts         # solc 0.8.28, sepolia 네트워크 (configVariable)
 │  ├─ contracts/BSideNFT.sol
@@ -96,7 +100,9 @@ b-side/
 │  ├─ contracts/test/MockBuyer.sol # 테스트 전용 (재진입·ETH 수신 거부·NFT 수신 불가 구매자). 배포하지 않음
 │  ├─ test/
 │  ├─ scripts/deploy.ts         # 배포 + 초기 설정 + lib/contracts 내보내기 (4.5)
-│  └─ scripts/mint.ts           # NFT 1개 발행 (배포와 분리, 4.5)
+│  ├─ scripts/mint.ts           # NFT 1개 발행 (배포와 분리, 4.5)
+│  ├─ scripts/seed.ts           # 로컬 전용: 발행 + 최초 판매 등록 (4.5)
+│  └─ scripts/lib/              # 스크립트 공용: env.ts (입력 읽기·형식 확인), deployment.ts (deployment.json 읽기)
 └─ docs/
 ```
 
@@ -315,6 +321,10 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 | 로컬 노드 | `npm run node` | Hardhat 로컬 노드 실행 (`http://127.0.0.1:8545`, chainId 31337) |
 | `scripts/deploy.ts` | `npm run deploy:local` | BSideNFT 배포 → BSideEscrow 배포 → `setEscrow` → 아티스트 등록 → `lib/contracts/`로 ABI·배포 정보 내보내기 |
 | `scripts/mint.ts` | `npm run mint:local` | `deployment.json`의 NFT 주소로 아티스트 계정이 NFT 1개 발행 |
+| `scripts/seed.ts` | `npm run seed:local` | 로컬(31337) 전용 테스트 데이터: 아티스트(계정 #1)가 NFT 1개 발행 → 최초 판매가로 판매 등록 |
+| (조합) | `npm run setup:local` | `deploy:local` + `seed:local`. 로컬 노드를 켤 때마다 1회 실행 (실행 순서는 README) |
+
+seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_CID`(필수, `ipfs://` 없이 CID만). 발행 인자는 생략 시 로컬 기본값(PriceCap 12000bps, 0.05 ETH)을 쓴다. CID 값은 파일에 기록하지 않고 실행할 때 지정한다(6.4).
 
 배포 인자 (환경 변수):
 - `CONFIRM_PERIOD_SECONDS`: 수령 승인 기한(초). 로컬 기본값은 300초(5분)다. 로컬이 아닌 네트워크에서는 기본값이 없어 반드시 지정해야 한다 (Sepolia 값은 미결정, proposal.md 8장).
@@ -403,6 +413,21 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 - 무료 RPC는 `eth_getLogs`로 한 번에 조회할 수 있는 블록 범위가 제한된다. 이벤트는 배포 블록부터 구간을 나누어 조회한다. 조회에 실패하면 Listing에 저장된 `listedAt`, `lockedAt`, `closedAt`으로 이력을 대신 표시한다.
 - 전체를 훑는 방식은 거래 수에 비례해 느려진다. MVP 규모(수십~수백 건)에서는 충분하며, 규모가 커지면 PostgreSQL로 전환한다.
 
+구현 세부 (5단계):
+- `MarketReader` 메서드는 화면에서 쓰는 것만 둔다: `getActiveListings`, `getListing`, `getToken`, `getListingsByToken`, `getTokenHistory`. 내 NFT·내 거래·분쟁 목록은 해당 화면을 만들 때 추가한다.
+- Next.js 설정의 Cache Components(`cacheComponents: true`)에서 조회는 **요청 시점에 실행**한다. `chainReader`의 조회 함수는 `connection()`을 먼저 호출하고, 페이지는 조회 컴포넌트를 `<Suspense>`로 감싼다. 따라서 빌드에는 RPC가 필요 없고, 거래 후 `router.refresh()`로 항상 최신 상태를 받는다. `use cache`는 쓰지 않는다.
+- 같은 요청 안의 중복 조회(예: 전체 거래 목록, `confirmPeriod`)는 `React.cache`로 한 번만 실행한다.
+- `JsonRpcProvider`는 `deployment.json`의 chainId로 네트워크를 고정한다(`staticNetwork`). 연결 시 네트워크 감지 요청과 재시도를 생략한다.
+- 이벤트 조회 구간(`LOG_BLOCK_RANGE`)은 10,000블록이다. 무료 RPC의 `eth_getLogs` 범위 제한은 제공자마다 다르므로 Sepolia 배포 시 확인해 조정한다.
+- 토큰별 이력: `Listed`·`Purchased`·`Completed`·`Cancelled`·`Disputed`는 indexed `tokenId`로, `DisputeResolved`는 tokenId가 없으므로 그 토큰의 거래 ID 목록으로 조회한다. 거래가 없는 토큰은 로그를 조회하지 않는다.
+- 대체 이력(로그 조회 실패 시)에서 분쟁 제기 시각, 취소 사유, 로열티는 Listing에 저장되지 않으므로 "알 수 없음"으로 표시한다.
+- 조회 실패(RPC 연결 불가 등)는 `app/error.tsx`, 없는 거래·토큰은 `notFound()`로 처리한다. 스트리밍 중 처리되므로 HTTP 상태 코드는 200이다.
+- 조회 오류 표시: `MarketReader`의 모든 메서드는 오류를 `ChainReadError`로 바꿔 던진다(`chain/errors.ts`). 원본 오류 메시지(ethers 오류에는 요청 URL·응답 본문이 들어갈 수 있음)는 화면으로 보내지 않고, 오류 종류(네트워크 연결 실패, 배포 주소에 컨트랙트 없음, CALL_EXCEPTION, TIMEOUT, SERVER_ERROR, RPC_URL 미설정)에 따라 미리 정한 안내 문구만 쓴다. 원본은 서버 로그에만 남긴다. Next.js 내부 제어 오류는 `unstable_rethrow`로 다시 던진다.
+- `error.tsx`는 개발 모드에서만 이 안내 문구를 보여주고, 프로덕션에서는 서버 로그 확인용 `digest`만 보여준다 (프로덕션에서는 Next.js가 서버 오류 메시지를 숨긴다).
+- `RPC_URL`은 Provider를 처음 만들 때 한 번 읽는다. `.env.local`을 바꾸면 웹 서버를 재시작한다.
+- 토큰의 현재 소유자가 에스크로 주소이면 `Token.inEscrow`로 표시하고 화면에는 "에스크로 보관 중"으로 보여준다.
+- 최초 판매 표시(4.1): `lib/domain/policy.ts`의 `primarySaleState`가 `primaryEnded`와 거래 기록(`isPrimary && COMPLETED`)으로 "최초 판매 자격 있음 / 플랫폼 최초 판매 완료 / 외부 이전으로 최초 판매 자격 종료"를 구분한다.
+
 ### 6.2 쓰기 흐름
 
 1. 사용자가 브라우저에서 버튼을 누른다.
@@ -441,6 +466,18 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 - 컨트랙트 단위 테스트(Hardhat)는 IPFS를 조회하지 않으므로 비어 있지 않은 임의의 문자열을 사용한다. 테스트 체인은 매번 초기화되어 남지 않는다.
 - Phase 2에서 업로드 기능을 붙여도 컨트랙트는 수정하지 않는다.
 - 선행 조건: 6단계 시연 전에 Pinata 계정과 메타데이터·상태 기록 업로드가 필요하다.
+
+### 6.5 지갑 연결 상태
+
+조회와 지갑의 분리 (proposal.md 3장):
+- 회원가입·로그인은 없다. 조회 화면(목록·상세·이력)은 서버가 RPC로 읽으므로 지갑이 전혀 필요 없다.
+- 헤더의 `ConnectButton`은 선택 사항이다. MetaMask가 없으면 "지갑 없이 조회 중"만 표시하고, 다른 네트워크여도 작은 전환 링크만 보여준다.
+- 지갑 연결과 올바른 네트워크는 거래 기능에서만 요구한다. 6단계에서 거래 버튼을 `NetworkGuard`로 감싸, 연결 안 됨 → "지갑 연결", 다른 네트워크 → "네트워크 전환"을 그 자리에서 안내한다.
+
+- 연결 상태(계정, chainId, 진행 중 요청, 오류)는 `hooks/useWallet.ts`의 **모듈 단위 저장소 하나**에 두고 `useSyncExternalStore`로 구독한다. 모든 컴포넌트가 같은 상태를 보므로 별도 Context Provider(`WalletProvider`)를 두지 않는다.
+  - 이전 설계(WalletProvider context)에서 변경한 이유: 상태 공유에 Provider가 필요 없고, 서버 렌더링·hydration 중에는 고정된 초기 상태("checking")를 쓰므로 서버/클라이언트 출력 불일치가 생기지 않는다.
+- 첫 구독 시 `eth_accounts`(승인 창 없음)와 `eth_chainId`로 현재 상태를 읽고, MetaMask의 `accountsChanged`·`chainChanged` 이벤트로 변경을 반영한다.
+- 앱이 사용하는 체인은 `deployment.json`의 chainId다. 다르면 `ConnectButton`이 `wallet_switchEthereumChain`으로 전환을 요청한다. MetaMask에 해당 네트워크가 없으면(4902) 직접 추가하도록 안내한다. 브라우저는 RPC 주소를 모르므로(3.2) 네트워크 추가 요청은 하지 않는다.
 
 ## 7. 환경 변수와 비밀값
 

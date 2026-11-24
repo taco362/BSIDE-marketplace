@@ -6,9 +6,9 @@
 
 ## 현재 상태
 
-- **단계**: Phase 1 · 4단계 완료
-- **다음 작업**: Phase 1 · 5단계 (프론트 기반: 지갑 연결, 조회 계층, 목록·상세 페이지) — 사용자 승인 후 시작
-- **저장소 상태**: Next.js 16.4.6 초기 화면 + `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보)
+- **단계**: Phase 1 · 5단계 완료
+- **다음 작업**: Phase 1 · 6단계 (거래 화면: 관리자 아티스트 등록, 발행, 판매 등록, 구매·수령 승인, 출금) — 사용자 승인 후 시작
+- **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결
 
 ## 진행 원칙
 
@@ -23,7 +23,7 @@
 | 2 | BSideNFT 구현 및 테스트 | architecture.md 9장의 BSideNFT 테스트 통과 | ☑ 완료 |
 | 3 | BSideEscrow 전체 상태 머신 구현 및 테스트 (등록·취소·구매·승인·기한 정산·판매자 환불·분쟁·중재·출금) | architecture.md 9장의 Escrow·정산·보안 테스트 통과 | ☑ 완료 |
 | 4 | 배포 스크립트: 명령 한 번으로 NFT·에스크로 배포 → `setEscrow` → 아티스트 등록 → ABI·주소·배포 블록을 `lib/contracts/`로 내보내기 (에스크로 주소는 1회만 등록되므로 재배포는 이 스크립트로 전체를 다시 생성). NFT 발행은 별도 스크립트로 분리 | 로컬 노드에서 스크립트 1회 실행으로 배포·초기 설정 성공 | ☑ 완료 |
-| 5 | 프론트 기반: 지갑 연결, `MarketReader`·chainReader, 목록·상세·토큰 이력 페이지 | `npm run lint`, `npm run build` 통과, 로컬 노드 데이터 조회 확인 | ☐ 대기 |
+| 5 | 프론트 기반: 지갑 연결, `MarketReader`·chainReader, 목록·상세·토큰 이력 페이지 | `npm run lint`, `npm run build` 통과, 로컬 노드 데이터 조회 확인 | ☑ 완료 |
 | 6 | 거래 화면: 관리자 아티스트 등록, 발행, 판매 등록, 구매·수령 승인, 출금 (Pinata에 수동 업로드한 실제 CID 사용) | 로컬 노드에서 흐름 A·B 수동 시연 성공 | ☐ 대기 |
 | 7 | Sepolia 배포 및 시연 점검 (짧은 `confirmPeriod`) | Sepolia에서 흐름 A·B 시연 성공 | ☐ 대기 |
 
@@ -100,6 +100,56 @@
 - 비고 (Windows 환경)
   - 백그라운드로 실행한 `npx hardhat node`를 종료해도 실제 노드 프로세스(`node ... hardhat ... node`)가 남아 8545 포트를 계속 점유하는 경우가 있었음. 이 때문에 다음 노드 실행이 포트 충돌로 실패하고 배포가 이전 노드로 들어감 → 해당 프로세스를 직접 종료한 뒤 새 노드에 다시 배포함. 터미널에서 직접 실행할 때는 `Ctrl+C`로 종료하면 된다
 
+### 5단계 결과 (2026-11-24)
+
+- 의존성: 루트에 `ethers` 6.17, `server-only` 추가
+- 구현 (세부 사항은 architecture.md 3장, 6.1, 6.5)
+  - 주소·ABI: `lib/contracts/index.ts` (`getNftContract`, `getEscrowContract`, `DEPLOYMENT`)
+  - 도메인: `lib/domain/types.ts`, `policy.ts` (정책 표시, 재판매 상한 안내, 최초 판매 표시 상태), `format.ts` (wei→ETH, 주소 축약, 시각, 상태 이름), `lib/config/ipfs.ts`
+  - 조회: `lib/data/reader.ts` (`MarketReader`), `lib/data/chain/provider.ts`, `chainReader.ts` (현재 상태 조회), `events.ts` (이벤트 이력), `mappers.ts` (반환값 변환), `lib/data/index.ts`
+  - 지갑: `lib/wallet/signer.ts` (EIP-1193 계정·네트워크), `hooks/useWallet.ts`, `components/wallet/ConnectButton.tsx`
+  - 화면: `/` 판매 중 목록, `/listings/[id]` 거래 상세(조회 전용, 거래 버튼은 6단계), `/tokens/[tokenId]` NFT 정보·플랫폼 거래·거래 이력, `error.tsx`, `not-found.tsx`
+- 설계 변경 (architecture.md 반영): 지갑 상태를 `WalletProvider` context 대신 모듈 단위 저장소 + `useSyncExternalStore`로 관리 (6.5). `ListingCard`는 목록 화면에서만 쓰므로 `app/_components/`에 둠 (3.1 규칙)
+- CLAUDE.md 규칙 11(파일 하나는 한 역할) 반영: `chainReader.ts`를 조회 / 이벤트 이력 / 변환 3개 파일로 분리, 상세·토큰 페이지의 정보 블록·표를 `_components/ListingInfo`, `TokenListingsTable`로 분리
+- 검증
+  - `npm run lint`, `npm run build` 통과 (RPC 없이 빌드됨. 조회 부분은 Partial Prerender로 요청 시 스트리밍)
+  - 로컬 노드 연결 (빈 상태): `/` "판매 중인 상품이 없습니다", `/listings/1`·`/tokens/1`·`/listings/abc`·`/tokens/0` → 찾을 수 없음 표시
+  - 노드 중단 시: 서버 로그에 `ECONNREFUSED`, 응답은 클라이언트 오류 경계(`error.tsx`)로 전환되는 표시 포함
+  - 비밀값 노출 점검: `.next/static`에서 `RPC_URL`, `127.0.0.1:8545`, `PINATA` 검색 결과 없음
+  - 데이터 조회 (새 로컬 노드, 사용자가 Pinata에 업로드한 실제 CID 사용)
+    - 사전 점검: 메타데이터 CID `bafkreiac64jw…cnj4`, 상태 기록 CID `bafkreiftxfwf…3arm` 모두 공개 게이트웨이에서 조회됨. 상태 기록의 `tokenId: 1`, `seller`(계정 #1)가 시나리오와 일치
+    - 발행: `npm run mint:local` (정가 보호형 120%, 최초 판매가 0.05 ETH — 시연용으로 정한 값) → tokenId 1. **4단계에서 미검증이던 `mint.ts` 발행 경로 확인**
+    - 판매 등록·구매·수령 승인은 scratchpad의 임시 스크립트로 실행 (노드의 잠금 해제 계정 사용, 저장소에 포함하지 않음)
+    - 단계별 화면 확인 (HTML 문구 검사, 실패 0건)
+      - LISTED: 목록 카드(토큰 #1, 0.05 ETH, 정가 보호형 120%, 최초 판매), 상세(판매 중, 최초 판매가 고정, 상태 기록 CID, 메타데이터 URI, 재판매 상한 0.06 ETH), 토큰(최초 판매 자격 있음, 판매 등록 이벤트와 tx 해시)
+      - LOCKED: 목록 비어 있음, 상세(구매 완료 · 수령 대기, 구매자 계정 #2, 구매 시각, 수령 승인 기한), 토큰(구매 이벤트)
+      - COMPLETED: 상세(거래 완료, 종료 시각), 토큰(플랫폼 최초 판매 완료, 현재 소유자 = 구매자, 판매 등록 → 구매 → 거래 완료 이력, 대체 이력 안내 없음 = 이벤트 로그 사용)
+  - 검증 후 노드·서버 종료, `deployment.json`은 원래 내용으로 복구 (재배포로 `deployedAt`만 바뀌었음)
+- 미검증 (숨기지 않음)
+  - MetaMask 연결·네트워크 전환은 브라우저 수동 확인 필요 (자동 테스트 없음)
+  - 재판매·로열티·취소·분쟁이 포함된 이력 표시: 해당 상태 기록 CID가 추가로 필요하므로 6단계 흐름 B 시연에서 확인
+  - 이벤트 로그 대체 경로(`eventsFromListings`)는 실제로 로그 조회가 실패하는 환경에서 확인하지 못함
+  - 오류 화면(`error.tsx`)의 실제 표시는 브라우저에서 확인 필요 (HTML에서는 전환 표시만 확인)
+
+### 5단계 보완 (2026-11-24, 브라우저 점검 후 사용자 승인)
+
+- 브라우저 점검에서 판매 목록이 안 보인 원인: 실행 중인 dev 서버에 `.env.local`(RPC_URL)이 없었고 로컬 노드가 꺼져 있었음 (코드 결함 아님). `.env.local` 생성 후 목록·상세·이력·페이지 이동 정상, 콘솔 오류 없음
+- 반영 내용
+  - 로컬 실행 간소화: `contracts/scripts/seed.ts`(발행 + 최초 판매 등록), `npm run seed:local`, `npm run setup:local`(배포 + seed). 입력 확인·배포 정보 읽기를 `scripts/lib/`로 분리해 `mint.ts`와 공유. README를 로컬 실행 순서·문제 해결 중심으로 재작성
+  - 현재 소유자가 에스크로이면 "에스크로 보관 중"으로 표시 (`Token.inEscrow`)
+  - 개발 모드 오류 원인 표시: 조회 오류를 민감 정보 없는 안내 문구(`ChainReadError`)로 바꿔 전달, `error.tsx`는 개발 모드에서만 원인 표시
+  - 지갑 선택 사항화: 헤더 `ConnectButton`이 연결을 강요하지 않도록 변경. 회원가입·로그인 없음, 조회는 지갑 불필요 원칙을 proposal.md 3장·architecture.md 6.5에 명시. 거래 기능의 연결 요구는 6단계 `NetworkGuard`에서 구현
+- 검증
+  - 루트 `npm run lint`, `npm run build` 통과, `contracts` `npm run typecheck` 통과 (컨트랙트 코드 변경 없음)
+  - 브라우저(개발 모드) 오류 표시: 노드 중단 → "RPC 노드에 연결할 수 없습니다 (ECONNREFUSED)…", 배포 전 노드 → "배포 주소에 컨트랙트가 없습니다…". 브라우저 콘솔에 RPC 주소(`127.0.0.1:8545`)가 나타나지 않음 확인
+  - `mint.ts` 리팩터링 후: `INITIAL_PRICE_ETH` 누락·잘못된 `POLICY` 거부, 정상 발행 확인
+  - `seed.ts`: `CONDITION_CID`에 `ipfs://`를 붙이면 거부, 새 노드에서 `npm run setup:local` 1회로 배포·발행·판매 등록 완료 → 브라우저에서 목록·상세("에스크로 보관 중")·토큰 이력 확인
+  - `.next/static`에서 `RPC_URL`, `127.0.0.1:8545`, `PINATA_JWT` 검색 결과 없음
+- 미검증 (숨기지 않음)
+  - "RPC_URL 미설정" 문구의 새 표시 경로: Provider가 서버 프로세스당 한 번 만들어지므로 실행 중인 dev 서버에서는 재현되지 않음. 같은 문구는 보완 전 점검에서 브라우저에 표시되는 것을 확인함
+  - 프로덕션 모드에서 오류 화면의 `digest` 표시는 브라우저로 확인하지 않음
+  - MetaMask 네트워크 전환 버튼 클릭 (MetaMask 승인 창은 사용자가 처리해야 함)
+
 참고: 컨트랙트의 환불·분쟁·중재 기능은 배포 후 변경이 어렵기 때문에 Phase 1(3단계)에서 함께 구현한다. 해당 화면(UI)은 Phase 2에서 만든다.
 
 ## Phase 2 — 상품 정보 및 거래 안정성
@@ -140,3 +190,6 @@
 | 2026-11-22 | 2단계 검토 보완: 에스크로 직접 전송 차단 추가, "최초 판매 자격" 용어 정리, 4단계 배포 자동화 기준 추가, 테스트 45개 통과 |
 | 2026-11-22 | Phase 1 · 3단계 완료: BSideEscrow 구현, 전체 테스트 106개 통과. architecture.md 4.2·4.4에 구현 세부 사항 추가 |
 | 2026-11-23 | Phase 1 · 4단계 완료: 배포·발행 스크립트 분리 구현, 로컬 배포 검증. 샘플 CID 기록 파일 계획 제거 (Pinata 수동 업로드 CID 사용) |
+| 2026-11-24 | Phase 1 · 5단계 구현: 조회 계층(`MarketReader`·chainReader), 지갑 연결, 목록·상세·토큰 이력 화면. 지갑 상태 관리 방식 변경(WalletProvider → 외부 저장소) |
+| 2026-11-24 | Phase 1 · 5단계 완료: 실제 Pinata CID로 로컬 노드 발행·거래(LISTED → LOCKED → COMPLETED) 조회 검증. 규칙 11에 따라 조회·화면 파일 역할 분리 |
+| 2026-11-24 | 5단계 보완: 로컬 실행 간소화(`setup:local`, README), 에스크로 보관 표시, 개발 모드 안전한 오류 원인 표시, 지갑 선택 사항화·회원가입 없음 원칙 명시(proposal.md 3장) |

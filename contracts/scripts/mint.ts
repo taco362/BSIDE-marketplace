@@ -1,5 +1,5 @@
 /**
- * NFT 발행 스크립트 — 배포와 분리되어 있다 (docs/progress.md 4단계)
+ * NFT 발행 스크립트 — 배포와 분리되어 있다 (docs/architecture.md 4.5)
  *
  * lib/contracts/deployment.json의 BSideNFT 주소로, 아티스트 계정이 NFT 1개를 발행한다.
  * 메타데이터는 Pinata에 업로드한 실제 CID를 사용한다. 발행 후 메타데이터 URI와 정책은 변경할 수 없다.
@@ -17,38 +17,14 @@
  *   npm run mint:local
  */
 import { network } from "hardhat";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const POLICIES = { PriceCap: 0, Royalty: 1, Free: 2 } as const;
-type PolicyName = keyof typeof POLICIES;
-
-const DEPLOYMENT_FILE = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../lib/contracts/deployment.json",
-);
+import { readDeployment } from "./lib/deployment.js";
+import { POLICIES, readMintArgs } from "./lib/env.js";
 
 const { ethers, networkName } = await network.getOrCreate();
 const chainId = Number((await ethers.provider.getNetwork()).chainId);
 
-// ── 입력 검증 (컨트랙트 검증 전에 명확한 안내를 주기 위함. 최종 검증은 컨트랙트가 한다) ──
-const metadataUri = requireEnv("METADATA_URI");
-if (!metadataUri.startsWith("ipfs://") || metadataUri.length <= "ipfs://".length) {
-  throw new Error(`METADATA_URI는 ipfs://<CID> 형식이어야 합니다: ${metadataUri}`);
-}
-const initialPrice = ethers.parseEther(requireEnv("INITIAL_PRICE_ETH"));
-const policyName = requireEnv("POLICY") as PolicyName;
-if (!(policyName in POLICIES)) throw new Error(`POLICY는 PriceCap, Royalty, Free 중 하나여야 합니다: ${policyName}`);
-const policyBps = Number(process.env.POLICY_BPS ?? "0");
-
-// ── 배포 정보 확인 ──
-const deployment = JSON.parse(await readFile(DEPLOYMENT_FILE, "utf8"));
-if (deployment.chainId !== chainId) {
-  throw new Error(
-    `deployment.json은 chainId ${deployment.chainId}용입니다. 현재 네트워크 ${networkName}(chainId ${chainId})에 먼저 배포하세요.`,
-  );
-}
+const args = readMintArgs();
+const deployment = await readDeployment(chainId, networkName);
 
 const signers = await ethers.getSigners();
 const signerIndex = Number(process.env.ARTIST_SIGNER_INDEX ?? (chainId === 31337 ? "1" : "0"));
@@ -59,15 +35,11 @@ const nft = await ethers.getContractAt("BSideNFT", deployment.contracts.BSideNFT
 
 console.log(`네트워크: ${networkName} (chainId ${chainId})`);
 console.log(`아티스트: ${artist.address}`);
-console.log(`메타데이터: ${metadataUri}`);
-console.log(`최초 판매가: ${ethers.formatEther(initialPrice)} ETH, 정책: ${policyName} (${policyBps} bps)`);
+console.log(`메타데이터: ${args.metadataUri}`);
+console.log(`최초 판매가: ${ethers.formatEther(args.initialPrice)} ETH, 정책: ${args.policyName} (${args.policyBps} bps)`);
 
-const receipt = await (await nft.mint(metadataUri, initialPrice, POLICIES[policyName], policyBps)).wait();
+const receipt = await (
+  await nft.mint(args.metadataUri, args.initialPrice, POLICIES[args.policyName], args.policyBps)
+).wait();
 const tokenId = await nft.totalMinted();
 console.log(`발행 완료: tokenId ${tokenId} (block ${receipt!.blockNumber})`);
-
-function requireEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`환경 변수 ${name}가 필요합니다.`);
-  return value;
-}
