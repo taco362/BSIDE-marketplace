@@ -64,6 +64,14 @@ function findRevertData(error: unknown, depth = 0): string | null {
   return null;
 }
 
+/** 오류 객체와 감싸진 오류들의 메시지 문자열 (ethers·MetaMask가 원본 오류를 error/info/cause/data 안에 넣는다) */
+function collectMessages(error: unknown, depth = 0): string[] {
+  if (!error || typeof error !== "object" || depth > 5) return [];
+  const e = error as Record<string, unknown>;
+  const own = [e.message, e.shortMessage].filter((m): m is string => typeof m === "string");
+  return [...own, ...["error", "info", "cause", "data"].flatMap((key) => collectMessages(e[key], depth + 1))];
+}
+
 function decodeRevert(error: unknown): ErrorDescription | null {
   const known = (error as { revert?: { name: string; args: Args } } | null)?.revert;
   if (known?.name) return known as unknown as ErrorDescription;
@@ -93,8 +101,9 @@ export function toTxErrorMessage(error: unknown): string {
 
   const text = String((error as { shortMessage?: string; message?: string } | null)?.shortMessage ??
     (error as { message?: string } | null)?.message ?? "");
-  if (/nonce/i.test(text)) {
-    return "트랜잭션 nonce가 맞지 않습니다. 로컬 노드를 재시작했다면 MetaMask 설정 → 고급 → '활동 탭 데이터 지우기'를 실행하세요.";
+  // MetaMask가 노드 오류를 감싸면 ethers 문구가 "could not coalesce error"가 되므로 안쪽 메시지까지 찾는다
+  if (collectMessages(error).some((m) => /nonce/i.test(m))) {
+    return "트랜잭션 순번(nonce)이 맞지 않습니다. 로컬 노드를 재시작했다면 MetaMask에서 Hardhat Local 네트워크와 이 계정을 선택한 상태로 설정 → 고급 → '활동 및 nonce 데이터 지우기'를 실행하세요. 계정마다 따로 지워야 합니다.";
   }
   if (isError(error, "CALL_EXCEPTION")) return "컨트랙트 호출이 거부되었습니다. 새로고침 후 거래 상태를 확인하세요.";
   return text ? `트랜잭션 실패: ${text}` : "트랜잭션에 실패했습니다.";

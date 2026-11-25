@@ -8,19 +8,26 @@
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ContractTransactionResponse, Signer, TransactionReceipt } from "ethers";
+import { UserFacingError } from "@/lib/domain/errors";
 import { toTxErrorMessage } from "@/lib/tx/errors";
-import { WalletError, getSigner } from "@/lib/wallet/signer";
+import { getSigner } from "@/lib/wallet/signer";
 
 export interface TxStep {
   /** 진행 표시에 쓰는 이름 (예: "NFT 사용 승인") */
   label: string;
-  /** 트랜잭션을 보낸다. 보낼 필요가 없으면 null (예: 이미 approve된 경우) */
+  /**
+   * tx(기본): MetaMask 서명이 필요한 단계 (트랜잭션 또는 메시지 서명) → "서명 대기"로 표시
+   * work: 서명 없이 진행되는 작업 (예: 사진 업로드) → "처리 중"으로 표시
+   */
+  kind?: "tx" | "work";
+  /** 트랜잭션을 보낸다. 보낼 트랜잭션이 없으면 null (예: 이미 approve된 경우, 메시지 서명·업로드 단계) */
   send: (signer: Signer) => Promise<ContractTransactionResponse | null>;
 }
 
 export type TxPhase =
   | "idle"
   | "signing" // MetaMask 서명 대기
+  | "working" // 서명 없는 작업 진행 중 (업로드 등)
   | "pending" // 블록 포함 대기
   | "success"
   | "error";
@@ -55,7 +62,7 @@ export function useTx() {
         const receipts: TransactionReceipt[] = [];
         for (const [index, step] of steps.entries()) {
           const base = { label: step.label, step: index + 1, stepCount, error: null };
-          setState({ ...base, phase: "signing", hash: null });
+          setState({ ...base, phase: step.kind === "work" ? "working" : "signing", hash: null });
           const tx = await step.send(signer);
           if (!tx) continue;
           setState({ ...base, phase: "pending", hash: tx.hash });
@@ -67,7 +74,8 @@ export function useTx() {
         router.refresh();
         return receipts;
       } catch (error) {
-        const message = error instanceof WalletError ? error.message : toTxErrorMessage(error);
+        // 지갑·업로드 오류는 이미 사용자용 문구다. 그 외(트랜잭션·서명 거부 등)는 변환한다
+        const message = error instanceof UserFacingError ? error.message : toTxErrorMessage(error);
         setState((s) => ({ ...s, phase: "error", error: message }));
         return null;
       } finally {
@@ -79,5 +87,10 @@ export function useTx() {
 
   const reset = useCallback(() => setState(IDLE), []);
 
-  return { ...state, busy: state.phase === "signing" || state.phase === "pending", run, reset };
+  return {
+    ...state,
+    busy: state.phase === "signing" || state.phase === "working" || state.phase === "pending",
+    run,
+    reset,
+  };
 }

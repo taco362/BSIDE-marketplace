@@ -20,6 +20,11 @@ export class PinataError extends Error {
   }
 }
 
+/** JSON 객체를 파일로 공개 IPFS에 올리고 CID를 돌려준다 */
+export function uploadJson(value: unknown, name: string): Promise<string> {
+  return uploadFile(new TextEncoder().encode(JSON.stringify(value, null, 2)), name, "application/json");
+}
+
 /** 파일 1개를 공개 IPFS에 올리고 CID를 돌려준다 */
 export async function uploadFile(bytes: Uint8Array, name: string, type: string): Promise<string> {
   const jwt = process.env.PINATA_JWT;

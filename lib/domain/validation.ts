@@ -15,14 +15,6 @@ export function checkMetadataUri(uri: string): string | null {
   return null;
 }
 
-/** 상품 상태 기록 CID: ipfs:// 없이 CID만 (scripts/seed.ts와 같은 규칙) */
-export function checkConditionCid(cid: string): string | null {
-  if (!cid) return "상품 상태 기록 CID를 입력하세요.";
-  if (cid.startsWith("ipfs://")) return "ipfs:// 없이 CID만 입력하세요.";
-  if (/\s/.test(cid)) return "CID에 공백이 들어갈 수 없습니다.";
-  return null;
-}
-
 /** 정책 수치 범위 (D3) */
 export function checkPolicyBps(policy: Policy, bps: number | null): string | null {
   const range = POLICY_BPS_RANGE[policy];

@@ -57,7 +57,7 @@ b-side/
 │  │  └─ _components/             # 이 페이지 전용 (ListingInfo, ListingActions — 상태·역할별 거래 버튼)
 │  ├─ tokens/[tokenId]/           # NFT 정보, 정책, 거래 이력 (page.tsx + _components/TokenListingsTable, TradeTimeline)
 │  ├─ mint/                       # 아티스트 NFT 발행 (page.tsx + _components/MintForm)
-│  ├─ sell/[tokenId]/             # 판매 등록 (page.tsx + _components/SellForm). NFT 선택은 my의 보유 NFT 목록에서
+│  ├─ sell/[tokenId]/             # 판매 등록 (page.tsx + _components/SellForm, ConditionFields). NFT 선택은 my의 보유 NFT 목록에서
 │  ├─ my/                         # 출금, 보유 NFT, 판매·구매 거래 (?account=, 6.5) (+ _components/AccountSync, WithdrawPanel, MyTokenList, MyListingsTable)
 │  ├─ admin/                      # 아티스트 등록·활동명 변경·회수 (+ _components/RegisterArtistForm, ArtistTable, RevokeArtistButton). 분쟁 중재는 Phase 2
 │  └─ api/ipfs/                   # Pinata 업로드 (Phase 2, 6.3): images/route.ts(U1), condition/route.ts(U2), metadata/route.ts(U3)
@@ -67,7 +67,8 @@ b-side/
 │  ├─ wallet/                     # ConnectButton (연결·네트워크 전환), NetworkGuard (거래 기능에서만 연결·네트워크 요구)
 │  ├─ listing/                    # ListingStatusBadge
 │  ├─ token/                      # TokenSummary, PolicyBadge
-│  └─ tx/                         # TxStatus (서명 대기·블록 포함 대기·성공·실패 표시), TxButton (입력 없는 단일 동작 버튼)
+│  ├─ tx/                         # TxStatus (서명 대기·처리 중·블록 포함 대기·성공·실패 표시), TxButton (입력 없는 단일 동작 버튼)
+│  └─ upload/                     # PhotoPicker (사진 선택·미리보기, 6.3)
 ├─ hooks/                         # 클라이언트 상태 훅
 │  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (모듈 단위 저장소 + useSyncExternalStore, 6.5)
 │  ├─ useTx.ts                    # 트랜잭션 단계 실행·진행 상태·오류 문구, 성공 시 router.refresh() (6.2)
@@ -100,6 +101,7 @@ b-side/
 │  │  ├─ escrow.ts                # list, cancelListing, buy, confirmReceipt, claimAfterTimeout, withdraw (refund·dispute·resolve는 Phase 2)
 │  │  └─ errors.ts                # 트랜잭션 오류·custom error → 한국어 안내 문구
 │  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer (client)
+│  ├─ api/upload.ts               # 업로드 확인 서명, /api/ipfs/* 호출 (client, 6.3)
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
 │  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts (server-only, 6.3)
 │  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소(Pinata 공개 게이트웨이), CID → URL 변환
@@ -475,7 +477,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 |---|---|---|
 | `/admin` | 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`이 아니면 경고만 표시 |
 | `/mint` | 발행 `mint` (아티스트) | 승인된 아티스트 목록에 없으면 경고만 표시 |
-| `/sell/[tokenId]` | `approve` → `list` (소유자) | 소유자일 때. 가격은 `listingPriceRule`: 최초 판매면 최초 판매가 고정, 정가 보호형 재판매면 상한 안내 |
+| `/sell/[tokenId]` | 업로드 확인 서명 → 사진·상태 기록 업로드(6.3) → `approve` → `list` (소유자) | 소유자일 때. 가격은 `listingPriceRule`: 최초 판매면 최초 판매가 고정, 정가 보호형 재판매면 상한 안내 |
 | `/listings/[id]` | LISTED: 구매 `buy`(판매자 외) / 등록 취소 `cancelListing`(판매자). LOCKED: 수령 승인 `confirmReceipt`(구매자) / 정산 청구 `claimAfterTimeout`(판매자, 기한 전에는 비활성) | 상태·역할별. DISPUTED·종료 상태는 안내 문구만 |
 | `/my` | 출금 `withdraw` (본인) | 조회 계정과 연결 계정이 같을 때 |
 
@@ -553,12 +555,24 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 | `lib/upload/image.ts` | 바이트 시그니처로 사진 형식 판별, 크기 확인 (server-only) |
 | `lib/upload/errors.ts` | `UploadError(status, 안내 문구)` (server-only) |
 | `app/api/ipfs/images/route.ts` | 요청 해석 → 확인 → 업로드 → 응답만 한다 |
+| `lib/upload/condition.ts` | 상태 기록 입력 확인과 JSON 작성 (tokenId·seller·createdAt은 서버 값) (server-only, U2) |
+| `app/api/ipfs/condition/route.ts` | JSON 요청(16KB 이하) → 서명·권한 확인(용도는 항상 `condition`) → 기록 작성 → 업로드 (U2) |
+| `lib/api/upload.ts` | 브라우저: 업로드 확인 서명(`signer.signMessage`), 사진·상태 기록 업로드 요청 (U2) |
+| `lib/domain/errors.ts` | `UserFacingError`: 메시지를 그대로 보여도 되는 오류 (지갑·업로드 요청 오류가 상속) |
+| `components/upload/PhotoPicker.tsx` | 사진 선택·미리보기·형식·크기 안내 (판매 등록, U3 발행에서 재사용) |
+
+판매 등록 화면 흐름 (U2, `useTx` 단계로 한 번에 진행):
+1. 업로드 확인 서명 (MetaMask 메시지 서명) → 2. 사진 업로드 (장마다 1단계, `kind: "work"` = "처리 중" 표시) → 3. 상태 기록 업로드 → 4. NFT 사용 승인 → 5. 판매 등록
+- 업로드가 끝난 뒤 승인·등록 서명을 거부하면, 입력(상태·사진)이 그대로일 때 다시 제출하면 업로드를 건너뛰고 같은 상태 기록 CID를 쓴다 (불필요한 중복 업로드 방지).
+- `useTx`의 단계 종류: `tx`(기본, MetaMask 서명 대기 표시) / `work`(서명 없는 작업, "처리 중" 표시). 오류가 `UserFacingError`이면 메시지를 그대로, 아니면 `lib/tx/errors.ts`로 변환해 보여준다.
+- 상태 기록 글자 수 상한 1000자는 요청 크기·남용 방지를 위한 구현 상한이다 (정책 값 아님).
 
 ### 6.4 Phase 1의 CID 사용
 
 컨트랙트는 빈 CID를 거부한다. Phase 1에는 업로드 기능(6.3)이 없으므로 **Pinata에 수동으로 업로드한 실제 CID**를 사용한다.
 
 - 별도의 샘플 CID 기록 파일이나 임시 CID 관리 로직은 두지 않는다. CID는 발행·판매 등록 시점에 직접 입력한다 (`scripts/mint.ts`의 `METADATA_URI`, 6단계 화면 입력).
+- U2부터 판매 등록 화면은 CID 입력 대신 업로드(6.3)를 쓴다. 발행 화면은 U3까지 메타데이터 CID를 직접 입력한다. 스크립트(`seed.ts`의 `CONDITION_CID`, `mint.ts`의 `METADATA_URI`)는 계속 CID를 직접 받는다.
 - 가짜·임시 CID로 NFT를 발행하지 않는다. 메타데이터 URI는 발행 후 변경할 수 없기 때문이다 (4.1).
 - 업로드 순서: 이미지 업로드 → 이미지 CID를 넣은 메타데이터 JSON(`name`, `description`, `image`) 업로드 → 메타데이터 CID로 발행.
 - 업로드에 쓰는 Pinata 키는 코드나 저장소에 넣지 않는다.

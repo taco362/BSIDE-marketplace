@@ -20,6 +20,56 @@ export const IMAGE_EXTENSIONS: Record<ImageType, string> = {
   "image/webp": "webp",
 };
 
+/** 상태 기록 글자 수 상한 (구현 상한: 요청 크기와 남용 방지용, 정책 값 아님) */
+export const MAX_CONDITION_TEXT = 1000;
+/** 하자 정보를 비우면 기록되는 값 (D11) */
+export const NO_DEFECTS = "없음";
+
+/** 판매자가 입력하는 상품 상태 (D11). tokenId·seller·createdAt·images는 서버가 채운다 (D12) */
+export interface ConditionInput {
+  /** true: 미개봉, false: 개봉 */
+  sealed: boolean;
+  /** 사용 상태 설명 (필수) */
+  condition: string;
+  /** 하자 정보 (선택, 비우면 "없음") */
+  defects: string;
+}
+
+/** IPFS에 올라가는 상태 기록 JSON (architecture.md 6.3) */
+export interface ConditionRecord extends ConditionInput {
+  tokenId: number;
+  seller: string;
+  images: string[];
+  createdAt: string;
+}
+
+/** CID 형식 (v0: Qm…, v1: base32 b…) */
+export function isCid(value: unknown): value is string {
+  return typeof value === "string" && /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{50,})$/.test(value);
+}
+
+/** 상태 입력 확인. 문제가 있으면 안내 문구, 없으면 null */
+export function checkConditionInput(input: ConditionInput): string | null {
+  if (!input.condition.trim()) return "사용 상태를 입력하세요.";
+  if (input.condition.length > MAX_CONDITION_TEXT) return `사용 상태는 ${MAX_CONDITION_TEXT}자 이하로 입력하세요.`;
+  if (input.defects.length > MAX_CONDITION_TEXT) return `하자 정보는 ${MAX_CONDITION_TEXT}자 이하로 입력하세요.`;
+  return null;
+}
+
+/** 사진 개수 확인 (D11) */
+export function checkImageCount(count: number): string | null {
+  if (count < MIN_CONDITION_IMAGES) return `사진을 ${MIN_CONDITION_IMAGES}장 이상 올리세요.`;
+  if (count > MAX_CONDITION_IMAGES) return `사진은 ${MAX_CONDITION_IMAGES}장까지 올릴 수 있습니다.`;
+  return null;
+}
+
+/** 브라우저에서 고른 파일의 형식·크기 안내 (최종 판별은 서버가 파일 바이트로 한다) */
+export function checkImageFile(file: { type: string; size: number }): string | null {
+  if (!(IMAGE_TYPES as readonly string[]).includes(file.type)) return "JPEG, PNG, WebP 사진만 올릴 수 있습니다.";
+  if (file.size > MAX_IMAGE_BYTES) return `사진은 장당 ${MAX_IMAGE_BYTES / 1024 / 1024}MB 이하만 올릴 수 있습니다.`;
+  return null;
+}
+
 /** 업로드 확인 서명 유효 시간 (초): 서명 시각이 이 시간보다 오래되면 거부 */
 export const UPLOAD_AUTH_MAX_AGE_SECONDS = 300;
 /** 서명 시각이 서버 시각보다 앞선 것을 허용하는 범위 (초, 시계 차이) */

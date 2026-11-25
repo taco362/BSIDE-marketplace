@@ -16,6 +16,12 @@ export function TxStatus({ state, successMessage }: { state: TxState; successMes
           MetaMask에서 서명을 기다리는 중{stepText}: {state.label}
         </p>
       );
+    case "working":
+      return (
+        <p role="status" className="text-sm text-zinc-600 dark:text-zinc-400">
+          처리 중{stepText}: {state.label}
+        </p>
+      );
     case "pending":
       return (
         <p role="status" className="text-sm text-zinc-600 dark:text-zinc-400">

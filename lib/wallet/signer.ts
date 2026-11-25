@@ -8,6 +8,7 @@
  */
 import { BrowserProvider, type JsonRpcSigner } from "ethers";
 import { DEPLOYMENT } from "@/lib/contracts";
+import { UserFacingError } from "@/lib/domain/errors";
 
 /** 이 앱이 사용하는 체인 (deployment.json 기준: 로컬 31337 / Sepolia 11155111) */
 export const EXPECTED_CHAIN_ID: number = DEPLOYMENT.chainId;
@@ -36,7 +37,7 @@ function requireEthereum(): Eip1193Provider {
   return ethereum;
 }
 
-export class WalletError extends Error {}
+export class WalletError extends UserFacingError {}
 
 /** 사용자에게 보여줄 오류 메시지로 변환 */
 export function toWalletError(error: unknown): WalletError {

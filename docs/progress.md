@@ -7,7 +7,7 @@
 ## 현재 상태
 
 - **단계**: Phase 1 · 6단계 완료 (사용자 MetaMask 확인 완료, 2026-11-26)
-- **다음 작업**: Phase 2 업로드 U2 (상품 상태·사진 등록 화면) — 사용자 승인 후 시작. U1(업로드 기반) 완료
+- **다음 작업**: U3 (발행 메타데이터 업로드). U1·U2 완료
 - **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결 + 거래 화면 (관리자, 발행, 판매 등록, 구매·수령 승인·정산 청구·등록 취소, 내 거래·출금)
 
 ## 진행 원칙
@@ -215,7 +215,7 @@
 | 단계 | 작업 | 완료 기준 | 상태 |
 |---|---|---|---|
 | U1 | 업로드 기반: 지갑 메시지 서명 확인, Pinata 업로드(`lib/ipfs/pinata.ts`, server-only), 사진 업로드 Route Handler (형식·용량 검사, 권한 확인) | 서명·권한·형식·용량 거부 테스트 통과, 실제 Pinata 업로드 1건 확인 | ☑ 완료 |
-| U2 | 상품 상태·사진 등록 화면: 판매 등록 화면에서 입력 → 서버가 상태 기록 JSON 작성·업로드 → `list` (수동 CID 입력 대체) | 로컬에서 흐름 B 재판매 등록 성공 | ☐ 대기 |
+| U2 | 상품 상태·사진 등록 화면: 판매 등록 화면에서 입력 → 서버가 상태 기록 JSON 작성·업로드 → `list` (수동 CID 입력 대체) | 로컬에서 흐름 B 재판매 등록 성공 | ☑ 완료 |
 | U3 | 발행 메타데이터 업로드: 발행 화면에서 이름·설명·대표 이미지 입력 → 업로드 → `mint` (D13) | 로컬에서 흐름 A 발행 성공 | ☐ 대기 |
 | U4 | 과거 상품 상태 조회: 거래 이력에 거래별 상태 기록 내용과 사진 표시 | 여러 번 거래된 NFT의 거래별 상태 표시 확인 | ☐ 대기 |
 | 판매자 환불, 분쟁 제기 화면 | ☐ 대기 |
@@ -240,6 +240,27 @@
   - 서명 유효 시간(5분) 안에서는 같은 서명을 재사용할 수 있다 (DB 없음, architecture.md 6.3 한계)
   - 실행 중이던 이전 로컬 노드에 재배포되어, 사용자가 MetaMask로 확인하던 거래 기록은 화면에서 보이지 않게 됨 (로컬 데이터, `deployment.json`은 원래 값으로 복구)
   - 브라우저 화면 연동(MetaMask 메시지 서명)은 U2에서 구현·확인
+
+### U2 결과 (2026-11-26 완료, 사용자 MetaMask 화면 확인)
+
+- 구현 (세부 사항은 architecture.md 6.3)
+  - 서버: `POST /api/ipfs/condition`, `lib/upload/condition.ts`(입력 확인·기록 작성), `lib/ipfs/pinata.ts`에 `uploadJson`
+  - 브라우저: `lib/api/upload.ts`(업로드 확인 서명·업로드 요청), `components/upload/PhotoPicker.tsx`, `app/sell/[tokenId]/_components/ConditionFields.tsx`
+  - 판매 등록 화면: CID 입력 칸 제거 → 상태·사진 입력, `useTx` 단계로 서명 → 사진 업로드 → 상태 기록 업로드 → approve → list. 승인·등록 서명 거부 후 같은 입력으로 재시도하면 업로드를 건너뜀
+  - 공통: `useTx` 단계 종류 `work`("처리 중" 표시), `lib/domain/errors.ts`의 `UserFacingError`(지갑·업로드 오류 공통), `lib/domain/upload.ts`에 상태 입력·사진 개수·파일 확인 함수
+  - 정리: 쓰지 않게 된 `checkConditionCid` 삭제, README 시연 안내 갱신
+- 검증 (새 로컬 노드 + dev 서버. 페이지가 쓰는 `lib/api/upload.ts`·`lib/tx/*`를 scratchpad 스크립트에서 그대로 호출, 노드 계정이 서명. 저장소에 포함하지 않음)
+  - `npm run lint`, `npm run build` 통과
+  - 상태 기록 API 거부 10건 통과: 서명 없음(401), 소유자 아님(403), metadata 용도 서명으로 요청(401), 개봉 여부 없음, 사용 상태 빈칸·1001자, 사진 0장·6장, CID 형식 오류, 중복 사진(모두 400)
+  - 정상 흐름: 사진 업로드 → 상태 기록 업로드 → 게이트웨이 JSON 확인 8건(tokenId·seller는 서버 값, sealed, 앞뒤 공백 제거, 하자 빈칸 → "없음", images, createdAt, 원본 파일 이름 미포함) → approve → list 성공, 거래의 `conditionCID` = 업로드한 기록, 거래 상세 화면에 CID 표시
+  - 최초 판매가 불일치 등록 시 "최초 판매는 최초 판매가(0.05 ETH)로만…" 안내 확인 (MetaMask를 거치지 않은 오류의 revert 해석)
+- 사용자 화면 확인 (MetaMask): 구매 → 수령 승인 → 판매 등록 화면에서 상태·사진 입력 후 재판매 등록까지 정상 확인 (사용자 보고 "전부 제대로 확인됨")
+- 비고 (숨기지 않음)
+  - 이 세션에서는 브라우저 자동화를 쓸 수 없어 화면 조작은 사용자가 직접 확인함
+  - 노드 재시작 후 MetaMask nonce 불일치는 MetaMask 쪽 조치(기본 화면 네트워크를 Hardhat Local로 선택 후 기록 지우기 또는 nonce 직접 지정)로 해결됨. 앱 코드 문제 아님
+  - 테스트 업로드가 Pinata에 남음: 1×1 PNG `bafkreigectgq…oo4`, 상태 기록 JSON 2개 `bafkreibou6ps…pwky`(첫 실행, 스크립트 가격 오류로 등록 전 중단), `bafkreigxd63t…7hlwa`(로컬 거래 #1에 연결). 삭제 여부는 사용자 결정
+  - 화면 확인 중 발견 (2026-11-26): 노드 재시작 후 구매 시 "could not coalesce error" 표시. 노드 로그상 원인은 MetaMask의 이전 nonce(`Nonce too high. Expected 0 but got 9`) — MetaMask의 기록 지우기는 선택된 계정에만 적용됨. 앱의 오류 안내가 MetaMask가 감싼 오류 안쪽을 보지 못해 nonce 안내 대신 원문이 나왔음 → `lib/tx/errors.ts`가 감싼 오류의 메시지까지 찾도록 수정(같은 구조의 오류로 확인), README 안내를 "계정마다 실행"으로 수정
+  - dev 서버 로그에 브라우저 오류 1회(`UserFacingError is not defined`): 서버 재시작 전 열려 있던 탭의 이전 번들에서 발생한 것으로 판단. 현재 서버가 내려주는 코드에는 import와 정의가 모두 있고 이후 재발 없음. 화면 확인 때 다시 나오면 알려 주기 바람
 
 ## Phase 3 — 확장 기능
 
@@ -277,3 +298,4 @@
 | 2026-11-26 | Phase 1 · 6단계 완료: 사용자 MetaMask 흐름 A·B 확인. 네트워크 전환 시 MetaMask 내부 오류 1건 기록(우회: MetaMask에서 직접 선택) |
 | 2026-11-26 | 업로드 기능 결정 (D11 상태 기록 항목·사진 제한, D12 지갑 서명·서버 기록 작성, D13 발행 메타데이터 업로드 추가). Phase 2 업로드를 7단계보다 먼저 진행하기로 하고 U1~U4로 나눔 |
 | 2026-11-26 | U1 완료: 업로드 확인 서명·권한 확인, Pinata v3 업로드, `POST /api/ipfs/images`. 거부 테스트 13건·실제 업로드 확인. 정책 범위 표기 D1~D13 |
+| 2026-11-26 | U2 구현: 판매 등록 화면에서 상태·사진 입력 → 서버가 상태 기록 작성·업로드 → list. API·흐름 검증 통과, 사용자 MetaMask 화면 확인으로 완료. MetaMask가 감싼 nonce 오류 안내 수정 |
