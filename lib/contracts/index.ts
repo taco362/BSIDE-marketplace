@@ -4,14 +4,17 @@
  * - abi/*.json, deployment.json은 contracts/scripts/deploy.ts가 생성한다. 직접 수정하지 않는다.
  * - Provider나 Signer를 만들지 않는다. 호출하는 쪽이 runner를 전달한다.
  *   서버 조회: lib/data/chain/provider.ts의 JsonRpcProvider
- *   트랜잭션 서명: lib/wallet/signer.ts의 Signer (6단계)
+ *   트랜잭션 서명: lib/wallet/signer.ts의 getSigner()
  */
-import { Contract, type ContractRunner } from "ethers";
+import { Contract, id, type ContractRunner } from "ethers";
 import nftAbi from "./abi/BSideNFT.json";
 import escrowAbi from "./abi/BSideEscrow.json";
 import deployment from "./deployment.json";
 
 export const DEPLOYMENT = deployment;
+
+/** BSideNFT.ARTIST_ROLE = keccak256("ARTIST_ROLE") */
+export const ARTIST_ROLE = id("ARTIST_ROLE");
 
 export function getNftContract(runner: ContractRunner | null): Contract {
   return new Contract(deployment.contracts.BSideNFT.address, nftAbi, runner);

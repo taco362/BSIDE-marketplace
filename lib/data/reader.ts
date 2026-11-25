@@ -3,7 +3,14 @@
  * 화면은 이 인터페이스와 lib/domain 타입에만 의존한다. 구현체: chain/chainReader.ts (MVP)
  * 메서드는 화면에서 실제로 쓰는 것만 둔다.
  */
-import type { AccountDirectory, Listing, ListingWithToken, Token, TokenHistory } from "@/lib/domain/types";
+import type {
+  AccountDirectory,
+  AccountProfile,
+  Listing,
+  ListingWithToken,
+  Token,
+  TokenHistory,
+} from "@/lib/domain/types";
 
 export interface MarketReader {
   /** 판매 중(LISTED)인 거래와 토큰 정보. 거래 ID 내림차순(최근 등록 순) */
@@ -18,4 +25,16 @@ export interface MarketReader {
   getTokenHistory(tokenId: number): Promise<TokenHistory>;
   /** 화면에 표시할 주소들의 활동명·인증 여부 (D7). 빈 값과 중복은 무시한다. 결과 키는 소문자 주소 */
   getAccounts(addresses: (string | null | undefined)[]): Promise<AccountDirectory>;
+
+  // ── 6단계: 거래 화면 ──
+  /** 해당 주소가 현재 소유한 NFT (에스크로에 예치된 NFT는 제외). 토큰 ID 오름차순 */
+  getTokensByOwner(owner: string): Promise<Token[]>;
+  /** 해당 주소가 판매자 또는 구매자인 거래. 거래 ID 내림차순 */
+  getListingsByAccount(account: string): Promise<{ selling: ListingWithToken[]; buying: ListingWithToken[] }>;
+  /** 출금 대기액 (wei) */
+  getPendingWithdrawal(account: string): Promise<bigint>;
+  /** 등록된 적이 있는 아티스트 (회수 포함, 처음 등록 순) */
+  getArtists(): Promise<AccountProfile[]>;
+  /** 관리자 주소 (MVP: 배포 계정 1개, architecture.md 8.3) */
+  getAdmin(): Promise<string>;
 }

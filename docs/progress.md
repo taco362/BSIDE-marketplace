@@ -6,9 +6,9 @@
 
 ## 현재 상태
 
-- **단계**: Phase 1 · 5단계 완료
-- **다음 작업**: Phase 1 · 6단계 (거래 화면: 관리자 아티스트 등록, 발행, 판매 등록, 구매·수령 승인, 출금) — 사용자 승인 후 시작
-- **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결
+- **단계**: Phase 1 · 6단계 구현 완료, 브라우저에서 흐름 A·B 전 과정 검증 완료 (테스트용 지갑 객체 사용). **실제 MetaMask 서명 창을 거친 시연은 미확인**
+- **다음 작업**: 사용자가 MetaMask로 흐름 A·B 확인 (재판매용 상태 기록 CID 권장) → 6단계 완료 처리 → 7단계 (Sepolia)
+- **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결 + 거래 화면 (관리자, 발행, 판매 등록, 구매·수령 승인·정산 청구·등록 취소, 내 거래·출금)
 
 ## 진행 원칙
 
@@ -24,7 +24,7 @@
 | 3 | BSideEscrow 전체 상태 머신 구현 및 테스트 (등록·취소·구매·승인·기한 정산·판매자 환불·분쟁·중재·출금) | architecture.md 9장의 Escrow·정산·보안 테스트 통과 | ☑ 완료 |
 | 4 | 배포 스크립트: 명령 한 번으로 NFT·에스크로 배포 → `setEscrow` → 아티스트 등록 → ABI·주소·배포 블록을 `lib/contracts/`로 내보내기 (에스크로 주소는 1회만 등록되므로 재배포는 이 스크립트로 전체를 다시 생성). NFT 발행은 별도 스크립트로 분리 | 로컬 노드에서 스크립트 1회 실행으로 배포·초기 설정 성공 | ☑ 완료 |
 | 5 | 프론트 기반: 지갑 연결, `MarketReader`·chainReader, 목록·상세·토큰 이력 페이지 | `npm run lint`, `npm run build` 통과, 로컬 노드 데이터 조회 확인 | ☑ 완료 |
-| 6 | 거래 화면: 관리자 아티스트 등록, 발행, 판매 등록, 구매·수령 승인, 출금 (Pinata에 수동 업로드한 실제 CID 사용) | 로컬 노드에서 흐름 A·B 수동 시연 성공 | ☐ 대기 |
+| 6 | 거래 화면: 관리자 아티스트 등록·회수, 발행, 판매 등록·등록 취소, 구매·수령 승인·기한 경과 정산 청구, 출금 (Pinata에 수동 업로드한 실제 CID 사용) | 로컬 노드에서 흐름 A·B 수동 시연 성공 | ◐ 브라우저 검증 완료 · MetaMask 확인 대기 |
 | 7 | Sepolia 배포 및 시연 점검 (짧은 `confirmPeriod`) | Sepolia에서 흐름 A·B 시연 성공 | ☐ 대기 |
 
 ### 1단계 결과 (2026-11-22)
@@ -166,6 +166,43 @@
   - 주소 복사 버튼: 자동화 브라우저에서 클릭 후 "복사됨"으로 바뀌지 않음. 탭에 포커스가 없어 클립보드 접근이 막힌 것으로 추정되며, 실제 브라우저에서 직접 확인 필요
   - 일반 판매자(아티스트가 아닌 재판매자)의 목록 카드 표시: 재판매용 상태 기록 CID가 없어 6단계 흐름 B에서 확인
 
+### 6단계 결과 (2026-11-25, 구현·브라우저 검증 완료 · 실제 MetaMask 확인 대기)
+
+- 범위 (사용자 결정): progress.md 목록 + 기한 경과 정산 청구(`claimAfterTimeout`), 판매 등록 취소(`cancelListing`, D4 LISTED), 아티스트 승인 회수 포함. 판매자 환불·분쟁 제기·중재 화면은 Phase 2 유지
+- 구현 (세부 사항은 architecture.md 3장, 6.1, 6.2, 6.5)
+  - 쓰기: `lib/tx/nft.ts`, `lib/tx/escrow.ts`, `lib/tx/errors.ts`(custom error → 한국어 안내), `lib/wallet/signer.ts`에 `getSigner()` 추가, `lib/contracts`에 `ARTIST_ROLE`
+  - 훅·공용 컴포넌트: `hooks/useTx.ts`(단계 실행·진행 상태·`router.refresh()`), `hooks/useNow.ts`, `components/wallet/NetworkGuard`, `components/tx/TxStatus`·`TxButton`, `components/ui/FormField`
+  - 입력 확인(안내용): `lib/domain/validation.ts`, `policy.ts`에 정책 수치 범위·`percentToBps`·판매 가격 규칙(`listingPriceRule`, `checkListingPrice`), `format.ts`에 `parseEth`
+  - 조회: `MarketReader`에 `getTokensByOwner`, `getListingsByAccount`, `getPendingWithdrawal`, `getArtists`, `getAdmin` 추가. `chain/artists.ts`(ArtistRegistered 이벤트), 이벤트 구간 조회를 `chain/logs.ts`로 분리해 토큰 이력과 공유
+  - 화면: `/admin`(등록·활동명 변경·회수), `/mint`, `/sell/[tokenId]`(approve → list), `/listings/[id]`에 `ListingActions`(구매·등록 취소·수령 승인·정산 청구), `/my`(출금, 보유 NFT → 판매 등록, 판매·구매 거래), 헤더 메뉴 `SiteNav`
+- 설계 결정 (architecture.md 반영)
+  - 컴포넌트는 `lib/tx` 함수를 `useTx`의 단계로 넘기기만 하고 Signer·Contract를 직접 만들지 않음 (3.1 의존 규칙 보완)
+  - 판매 등록 경로를 `/sell/[tokenId]`로 정하고, NFT 선택은 `/my`의 보유 NFT 목록에서 함
+  - `/my`는 연결 계정을 `?account=`로 서버에 전달해 조회 (서버는 지갑을 모름)
+- 검증
+  - 루트 `npm run lint`, `npm run build` 통과 (신규 라우트 `/admin`, `/mint`, `/my`, `/sell/[tokenId]` 포함)
+  - `lib/tx` 실행 검증 (새 로컬 노드, scratchpad 임시 스크립트를 esbuild로 번들해 노드의 잠금 해제 계정으로 실행, 저장소에 포함하지 않음) — **13건 통과**
+    - `registerArtist` 권한 부여·활동명 등록·재호출 시 활동명 변경, `revokeArtist` 후 권한 제거·활동명 유지
+    - 오류 안내 문구: 비관리자 등록, 빈 활동명, 65바이트 활동명, 미승인 계정 발행(실제 발행 없음), 없는 거래의 `buy`·`cancelListing`·`claimAfterTimeout`, 출금액 0인 `withdraw`
+  - 화면 렌더링 (dev 서버, HTML 문구 검사) — **12건 통과**: `/admin` 아티스트 목록(인증·회수 상태), `/mint`, `/my`(계정 없음·잘못된 주소·정상 주소의 출금 대기액 0 ETH·보유 NFT 없음), `/sell/1`·`/sell/abc` 찾을 수 없음, `/` 빈 목록. 서버 로그 오류 없음
+  - 검증 후 노드·서버 종료, `deployment.json`은 원래 내용으로 복구
+- 브라우저 흐름 A·B 검증 (2026-11-25, Chrome 자동화, 새 로컬 노드 + `deploy:local`)
+  - 방식: MetaMask 승인 창은 자동화로 조작할 수 없으므로, 탭 안에만 **테스트용 EIP-1193 지갑 객체**를 주입해 요청을 로컬 노드의 잠금 해제 계정(#0~#3)으로 보냄. 화면 → `NetworkGuard` → `useTx` → `getSigner`(ethers `BrowserProvider`) → `lib/tx` → 컨트랙트 → `router.refresh()` 경로 전체를 실행. 확인 창(`window.confirm`)은 탭 안에서 자동 승인. 저장소 코드 변경 없음
+  - CID: 사용자가 Pinata에 올린 메타데이터 `bafkreiac64jw…cnj4`, 상태 기록 `bafkreiftxfwf…3arm` (게이트웨이 조회 확인). 상태 기록 내용은 최초 판매용(tokenId 1, seller #1)이며, 흐름 B 재판매 등록에는 로컬 테스트에 한해 같은 CID를 재사용함
+  - 관리자(#0): 아티스트 등록(#3 "검증 아티스트") → 목록 자동 갱신, 승인 회수 → "승인 회수됨 (활동명 기록은 유지)"
+  - 흐름 A: 아티스트(#1) 발행 — 빈 입력·로열티 15% 범위 오류 안내 확인, 창작자 상생형 5%·0.05 ETH로 발행 → 영수증에서 토큰 #1 확인 → 최초 판매 등록(가격 고정 표시, `ipfs://` 접두어 거부, approve → list 2단계) → 판매자 등록 취소(NFT 아티스트 반환, 최초 판매 자격 유지) → `/my`에서 다시 등록 → 구매자(#2) 구매(LOCKED, 기한 표시, 판매자 화면은 기한 전 정산 청구 비활성) → 수령 승인(COMPLETED, NFT 구매자 이전) → 아티스트 출금(대기액 0.05 ETH → 0, 잔액 +0.04999 ETH = 가스비 차감)
+  - 흐름 B: #2가 `/my` 보유 NFT에서 재판매 등록(0.08 ETH, 로열티 5% 안내) → 목록 카드 판매자 축약 주소 표시 → #3 구매 → 기한(300초) 경과 시 판매자 화면의 정산 청구 버튼이 자동 활성화 → 정산 청구(COMPLETED) → 판매자 대기액 0.076 ETH, 아티스트 로열티 0.004 ETH 각각 출금
+  - 토큰 화면: "플랫폼 최초 판매 완료", 현재 소유자 #3("검증 아티스트", 회수되어 인증 표시 없음), 거래 4건 표와 이벤트 이력(등록·취소·구매·완료, 로열티 0.004 ETH) 표시. 브라우저 콘솔 오류 없음
+  - **5단계에서 넘어온 미검증 항목 해소**: 재판매·로열티가 포함된 이력 표시, 일반 판매자의 목록 카드 표시
+- 브라우저 검증에서 발견해 수정한 문제 (2건)
+  - 판매 등록 완료 표시가 남는 문제: Cache Components는 방문한 화면을 `<Activity>`로 숨겨 상태를 보존한다. 등록 후 취소하고 `/sell/[tokenId]`로 돌아오면 이전 "판매 등록을 완료했습니다"가 남아 폼이 보이지 않았음 → 완료 표시를 NFT가 실제로 에스크로에 있을 때(`token.inEscrow`)만 보이도록 수정. 재검증 통과
+  - 이전 동작의 결과 표시가 다음 버튼에 붙는 문제: 구매 후 같은 위치의 `TxButton`이 재사용되어 "수령 승인" 아래에 구매의 "완료되었습니다."가 표시됨 → `ListingActions`의 버튼 영역에 `key`(상태·계정)를 붙여 상태가 바뀌면 새로 그리도록 수정. 재검증 통과
+  - 수정 후 `npm run lint`, `npm run build` 통과
+- 미검증 (숨기지 않음)
+  - **실제 MetaMask 서명 창을 거친 흐름**: 위 검증은 테스트용 지갑 객체를 사용함. MetaMask에서의 서명·거부, MetaMask가 감싼 오류의 revert 해석, 실제 계정 전환 이벤트는 사용자가 직접 확인해야 함 (README 4절 순서)
+  - 테스트용 지갑 경로에서도 서명 거부(4001)·잔액 부족 문구는 실행하지 않음
+  - 정산 청구 버튼의 활성화는 브라우저 시계 기준이다. 실제 판정은 블록 시각이므로 시계가 다르면(예: 로컬 노드 시간 조작) 버튼 표시와 컨트랙트 판정이 어긋날 수 있다. 어긋나면 컨트랙트가 `DeadlineNotReached`로 거부하고 안내 문구가 나온다
+
 참고: 컨트랙트의 환불·분쟁·중재 기능은 배포 후 변경이 어렵기 때문에 Phase 1(3단계)에서 함께 구현한다. 해당 화면(UI)은 Phase 2에서 만든다.
 
 ## Phase 2 — 상품 정보 및 거래 안정성
@@ -210,3 +247,5 @@
 | 2026-11-24 | Phase 1 · 5단계 완료: 실제 Pinata CID로 로컬 노드 발행·거래(LISTED → LOCKED → COMPLETED) 조회 검증. 규칙 11에 따라 조회·화면 파일 역할 분리 |
 | 2026-11-24 | 5단계 보완: 로컬 실행 간소화(`setup:local`, README), 에스크로 보관 표시, 개발 모드 안전한 오류 원인 표시, 지갑 선택 사항화·회원가입 없음 원칙 명시(proposal.md 3장) |
 | 2026-11-24 | D7 확장: 아티스트 활동명 등록(`registerArtist`)·인증 표시. BSideNFT 수정·재배포, 테스트 113개 통과, 화면 계정 표시 규칙 통일(`AccountLabel`) |
+| 2026-11-25 | Phase 1 · 6단계 구현: 거래 화면(관리자·발행·판매 등록·거래 버튼·내 거래·출금), `useTx`·`NetworkGuard`, 범위에 정산 청구·등록 취소·승인 회수 포함(사용자 결정). 흐름 A·B 수동 시연 대기 |
+| 2026-11-25 | 6단계 브라우저 검증: 실제 Pinata CID로 흐름 A·B 전 과정 통과(테스트용 지갑 객체 사용). Activity 상태 보존으로 인한 표시 문제 2건 수정(판매 등록 완료 표시, 거래 버튼 상태) |

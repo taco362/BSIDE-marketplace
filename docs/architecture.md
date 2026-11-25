@@ -49,38 +49,40 @@
 ```
 b-side/
 ├─ app/                           # 라우트: 데이터를 불러와 컴포넌트를 조립만 한다
-│  ├─ layout.tsx                  # 공통 헤더 (ConnectButton)
-│  ├─ page.tsx                    # 판매 중 상품 목록 (+ _components/ListingCard)
+│  ├─ layout.tsx                  # 공통 헤더 (SiteNav, ConnectButton)
+│  ├─ page.tsx                    # 판매 중 상품 목록 (+ _components/ListingCard, SiteNav)
 │  ├─ error.tsx, not-found.tsx    # 조회 실패, 없는 거래·토큰
 │  ├─ listings/[id]/
 │  │  ├─ page.tsx                 # 거래 상세 (조회 + 조립)
-│  │  └─ _components/             # 이 페이지 전용 (ListingInfo, 6단계: ListingActions — 상태·역할별 버튼)
+│  │  └─ _components/             # 이 페이지 전용 (ListingInfo, ListingActions — 상태·역할별 거래 버튼)
 │  ├─ tokens/[tokenId]/           # NFT 정보, 정책, 거래 이력 (page.tsx + _components/TokenListingsTable, TradeTimeline)
 │  ├─ mint/                       # 아티스트 NFT 발행 (page.tsx + _components/MintForm)
-│  ├─ sell/                       # 보유 NFT 선택 → 판매 등록 (page.tsx + _components/)
-│  ├─ my/page.tsx                 # 내 NFT, 판매·구매 거래, 출금
-│  ├─ admin/                      # 아티스트 등록/회수, 분쟁 중재 (page.tsx + _components/)
+│  ├─ sell/[tokenId]/             # 판매 등록 (page.tsx + _components/SellForm). NFT 선택은 my의 보유 NFT 목록에서
+│  ├─ my/                         # 출금, 보유 NFT, 판매·구매 거래 (?account=, 6.5) (+ _components/AccountSync, WithdrawPanel, MyTokenList, MyListingsTable)
+│  ├─ admin/                      # 아티스트 등록·활동명 변경·회수 (+ _components/RegisterArtistForm, ArtistTable, RevokeArtistButton). 분쟁 중재는 Phase 2
 │  └─ api/ipfs/route.ts           # Pinata 업로드 (Phase 2)
 ├─ components/                    # 여러 페이지에서 재사용하는 UI
-│  ├─ ui/                         # 도메인과 무관한 기본 요소 (DetailList, IpfsLink, CopyButton)
+│  ├─ ui/                         # 도메인과 무관한 기본 요소 (DetailList, IpfsLink, CopyButton, FormField)
 │  ├─ account/                    # AccountLabel (활동명·인증 표시·축약/전체 주소, D7)
-│  ├─ wallet/                     # ConnectButton (연결·네트워크 전환), NetworkGuard (6단계)
+│  ├─ wallet/                     # ConnectButton (연결·네트워크 전환), NetworkGuard (거래 기능에서만 연결·네트워크 요구)
 │  ├─ listing/                    # ListingStatusBadge
 │  ├─ token/                      # TokenSummary, PolicyBadge
-│  └─ tx/                         # TxStatus (서명 대기·전송·성공·실패 표시)
+│  └─ tx/                         # TxStatus (서명 대기·블록 포함 대기·성공·실패 표시), TxButton (입력 없는 단일 동작 버튼)
 ├─ hooks/                         # 클라이언트 상태 훅
 │  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (모듈 단위 저장소 + useSyncExternalStore, 6.5)
-│  └─ useTx.ts                    # 트랜잭션 진행 상태 관리, 성공 시 router.refresh()
+│  ├─ useTx.ts                    # 트랜잭션 단계 실행·진행 상태·오류 문구, 성공 시 router.refresh() (6.2)
+│  └─ useNow.ts                   # 현재 시각(초). 정산 청구 버튼의 기한 경과 표시용
 ├─ lib/
 │  ├─ contracts/                  # ★ 컨트랙트 주소·ABI의 단일 출처 (Provider/Signer는 만들지 않음)
 │  │  ├─ abi/                     # 배포 스크립트가 생성
 │  │  ├─ deployment.json          # chainId, 주소, 배포 블록 (배포 스크립트가 생성)
-│  │  └─ index.ts                 # getNftContract(runner), getEscrowContract(runner) — runner는 호출하는 쪽이 전달
+│  │  └─ index.ts                 # getNftContract(runner), getEscrowContract(runner), ARTIST_ROLE — runner는 호출하는 쪽이 전달
 │  ├─ domain/                     # 순수 타입·함수 (서버·클라이언트 공용, 외부 호출 없음)
 │  │  ├─ types.ts                 # Listing, TokenInfo, TradeEvent, Policy, Status
-│  │  ├─ policy.ts                # 정책 표시 이름, 가격 상한 미리 계산 (화면 안내용)
+│  │  ├─ policy.ts                # 정책 표시 이름, 수치 범위, 가격 상한·판매 가격 규칙 미리 계산 (화면 안내용)
 │  │  ├─ format.ts                # wei↔ETH 변환, 주소 축약
-│  │  └─ account.ts               # 계정 표시 정보 찾기, 표시 대상 주소 모으기
+│  │  ├─ account.ts               # 계정 표시 정보 찾기, 표시 대상 주소 모으기
+│  │  └─ validation.ts            # 거래 화면 입력 형식 확인 (URI·CID·주소·활동명·정책 수치)
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
 │  │  ├─ chain/provider.ts        # 서버 조회용 JsonRpcProvider (server-only, RPC_URL 사용)
@@ -89,11 +91,14 @@ b-side/
 │  │  ├─ chain/mappers.ts         # 컨트랙트 반환값 → 도메인 타입 변환 (server-only)
 │  │  ├─ chain/errors.ts          # 조회 오류 → 민감 정보 없는 안내 문구 (server-only)
 │  │  ├─ chain/accounts.ts        # 주소별 활동명·인증 여부 조회 (server-only)
+│  │  ├─ chain/artists.ts         # ArtistRegistered 이벤트로 등록된 아티스트 목록 (server-only)
+│  │  ├─ chain/logs.ts            # 이벤트 로그 구간 나누어 조회 (server-only)
 │  │  └─ index.ts                 # getMarketReader(): chainReader 반환 (구현체 선택 로직 없음)
 │  ├─ tx/                         # 쓰기 전용 (client), 컨트랙트별로 분리
-│  │  ├─ nft.ts                   # mint, approve, 아티스트 등록·회수
-│  │  └─ escrow.ts                # list, cancel, buy, confirm, claim, refund, dispute, resolve, withdraw
-│  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer(6단계) (client)
+│  │  ├─ nft.ts                   # mint, approve(필요할 때만), 아티스트 등록·회수, 발행 영수증에서 토큰 ID 찾기
+│  │  ├─ escrow.ts                # list, cancelListing, buy, confirmReceipt, claimAfterTimeout, withdraw (refund·dispute·resolve는 Phase 2)
+│  │  └─ errors.ts                # 트랜잭션 오류·custom error → 한국어 안내 문구
+│  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer (client)
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
 │  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소(Pinata 공개 게이트웨이), CID → URL 변환
 ├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
@@ -116,7 +121,7 @@ b-side/
 의존 방향 (화살표 방향으로만 import한다):
 ```
 app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ lib/contracts
- │            │                                      └──▶ lib/domain
+ │            │  └ ─ ─ ─ ─ ─ ─ ─ ─▶ lib/tx (함수 참조만)  └──▶ lib/domain
  └──▶ lib/data (서버) ──▶ lib/contracts, lib/domain
 ```
 
@@ -124,6 +129,8 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 - **컴포넌트 위치**: 한 페이지에서만 쓰면 그 라우트의 `_components/`에 두고, 두 곳 이상에서 쓰면 `components/`로 옮긴다. `_` 접두사 폴더는 Next.js 라우트에서 제외된다(private folder).
 - **`"use client"`는 상호작용이 필요한 컴포넌트에만** 붙인다. 목록·상세 같은 조회 화면의 바깥 틀은 Server Component로 둔다.
 - **컴포넌트는 컨트랙트를 직접 호출하지 않는다**: 쓰기는 `hooks/useTx` → `lib/tx/*`를 거치고, 읽기는 페이지가 `lib/data`로 받아 props로 넘긴다.
+  - 컴포넌트는 `lib/tx` 함수를 `useTx`의 단계(`{ label, send: (signer) => lib/tx 함수(signer, …) }`)로 넘기기만 한다. Signer 생성, 서명·블록 포함 대기, 오류 변환, `router.refresh()`는 `useTx`만 한다. 컴포넌트가 Contract 객체나 Signer를 직접 만들지 않는다 (6단계 결정).
+  - 라우트 페이지(app)도 `lib/tx`의 함수를 쓰는 클라이언트 컴포넌트(`_components/`)에서만 위 방식으로 참조한다.
 - **lib/contracts가 주소·ABI의 단일 출처다**: `lib/data`와 `lib/tx`는 주소나 ABI를 직접 갖지 않고 `lib/contracts`의 함수로 컨트랙트 객체를 얻는다.
 - **lib/domain은 외부에 의존하지 않는다**: 타입과 순수 함수만 두며, 서버·클라이언트 양쪽에서 쓴다. `policy.ts`의 가격 상한 계산은 화면 안내용이고, 최종 검증은 항상 컨트랙트가 한다. 계산 규칙은 4.2와 같아야 한다.
 - **server-only 모듈**(`lib/data/chain`, `lib/ipfs`)은 클라이언트 컴포넌트에서 import하지 않는다.
@@ -427,7 +434,8 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - 전체를 훑는 방식은 거래 수에 비례해 느려진다. MVP 규모(수십~수백 건)에서는 충분하며, 규모가 커지면 PostgreSQL로 전환한다.
 
 구현 세부 (5단계):
-- `MarketReader` 메서드는 화면에서 쓰는 것만 둔다: `getActiveListings`, `getListing`, `getToken`, `getListingsByToken`, `getTokenHistory`. 내 NFT·내 거래·분쟁 목록은 해당 화면을 만들 때 추가한다.
+- `MarketReader` 메서드는 화면에서 쓰는 것만 둔다: `getActiveListings`, `getListing`, `getToken`, `getListingsByToken`, `getTokenHistory`, `getAccounts`. 6단계에서 `getTokensByOwner`(내 NFT, 에스크로 예치분 제외), `getListingsByAccount`(판매·구매 거래), `getPendingWithdrawal`(출금 대기액), `getArtists`(등록된 아티스트), `getAdmin`(관리자 주소 = `deployment.json`의 `admin`)을 추가했다. 분쟁 목록은 Phase 2 중재 화면을 만들 때 추가한다.
+- 아티스트 목록(`chain/artists.ts`): `ArtistRegistered` 이벤트로 등록된 적이 있는 주소를 모으고 현재 활동명·승인 여부를 조회한다. 회수된 아티스트도 포함한다. `grantRole`로만 승인된 주소는 나오지 않는다(4.1, 사용하지 않는 경로). 이벤트 구간 조회는 `chain/logs.ts`를 토큰 이력과 함께 쓴다.
 - Next.js 설정의 Cache Components(`cacheComponents: true`)에서 조회는 **요청 시점에 실행**한다. `chainReader`의 조회 함수는 `connection()`을 먼저 호출하고, 페이지는 조회 컴포넌트를 `<Suspense>`로 감싼다. 따라서 빌드에는 RPC가 필요 없고, 거래 후 `router.refresh()`로 항상 최신 상태를 받는다. `use cache`는 쓰지 않는다.
 - 같은 요청 안의 중복 조회(예: 전체 거래 목록, `confirmPeriod`)는 `React.cache`로 한 번만 실행한다.
 - `JsonRpcProvider`는 `deployment.json`의 chainId로 네트워크를 고정한다(`staticNetwork`). 연결 시 네트워크 감지 요청과 재시도를 생략한다.
@@ -450,6 +458,26 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 2. 컴포넌트가 `useTx` 훅으로 `lib/tx/nft.ts` 또는 `lib/tx/escrow.ts`의 함수를 호출하고, MetaMask 서명 요청이 열린다. 진행 상태(서명 대기, 전송, 성공, 실패)는 `TxStatus` 컴포넌트로 표시한다. 판매 등록은 NFT `approve` 후 `list` 순서로 진행한다.
 3. 트랜잭션이 블록에 포함되면 `router.refresh()`로 서버 조회 결과를 다시 불러온다.
 4. 연결된 네트워크가 Sepolia(또는 개발 중 로컬 Hardhat 네트워크)가 아니면 전환을 요청한다.
+
+구현 세부 (6단계):
+- 거래 버튼·폼은 `NetworkGuard` 안에 둔다. 지갑 연결과 올바른 네트워크를 만족해야 버튼이 보이고, 연결된 계정이 전달된다. `getSigner()`도 서명 직전에 chainId를 다시 확인한다.
+- `useTx.run(steps)`는 단계를 순서대로 실행한다. 단계의 `send`가 `null`을 반환하면 건너뛴다. 판매 등록은 `approveEscrowIfNeeded`(이미 에스크로가 승인되어 있으면 생략) → `list` 2단계다.
+- 오류 문구(`lib/tx/errors.ts`): 서명 거부, 잔액 부족, nonce 불일치(로컬 노드 재시작 후 MetaMask 기록), 컨트랙트 custom error(4.1·4.2의 오류 이름별 안내)로 나눈다. MetaMask가 오류를 감싸 ethers가 revert를 해석하지 못한 경우에도 오류 객체 안의 revert data를 두 컨트랙트 ABI로 다시 해석한다.
+- 발행·판매 등록 결과의 토큰 ID·거래 ID는 영수증의 `Transfer`·`Listed` 이벤트에서 얻어 다음 화면 링크로 보여준다.
+- Cache Components는 방문했던 화면을 `<Activity>`로 숨겨 클라이언트 상태를 보존한다(최근 3개 라우트). 따라서 거래 결과 표시는 컴포넌트 상태만으로 판단하지 않는다.
+  - 판매 등록 완료 표시는 NFT가 실제로 에스크로에 있을 때(`token.inEscrow`)만 보여준다. 취소 후 다시 들어오면 폼이 보인다.
+  - 거래 상세의 버튼 영역은 `key`(거래 상태 + 계정)로 묶는다. 상태가 바뀌면 새로 그려서, 이전 동작의 진행·완료 표시가 다음 동작 버튼에 남지 않게 한다.
+- 버튼 노출과 입력 확인(가격 규칙, 정책 수치 범위, CID 형식)은 화면 안내용이며 최종 검증은 컨트랙트가 한다. 되돌릴 수 없는 동작(발행, 구매, 수령 승인, 정산 청구, 등록 취소, 승인 회수)은 실행 전에 확인 창을 띄운다.
+
+| 화면 | 동작 (호출자) | 노출 조건 |
+|---|---|---|
+| `/admin` | 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`이 아니면 경고만 표시 |
+| `/mint` | 발행 `mint` (아티스트) | 승인된 아티스트 목록에 없으면 경고만 표시 |
+| `/sell/[tokenId]` | `approve` → `list` (소유자) | 소유자일 때. 가격은 `listingPriceRule`: 최초 판매면 최초 판매가 고정, 정가 보호형 재판매면 상한 안내 |
+| `/listings/[id]` | LISTED: 구매 `buy`(판매자 외) / 등록 취소 `cancelListing`(판매자). LOCKED: 수령 승인 `confirmReceipt`(구매자) / 정산 청구 `claimAfterTimeout`(판매자, 기한 전에는 비활성) | 상태·역할별. DISPUTED·종료 상태는 안내 문구만 |
+| `/my` | 출금 `withdraw` (본인) | 조회 계정과 연결 계정이 같을 때 |
+
+- 판매자 환불(`refundBySeller`), 분쟁 제기(`openDispute`), 중재(`resolveDispute`) 화면은 Phase 2에서 추가한다.
 
 ### 6.3 IPFS 업로드 흐름 (Phase 2)
 
@@ -488,7 +516,8 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 조회와 지갑의 분리 (proposal.md 3장):
 - 회원가입·로그인은 없다. 조회 화면(목록·상세·이력)은 서버가 RPC로 읽으므로 지갑이 전혀 필요 없다.
 - 헤더의 `ConnectButton`은 선택 사항이다. MetaMask가 없으면 "지갑 없이 조회 중"만 표시하고, 다른 네트워크여도 작은 전환 링크만 보여준다.
-- 지갑 연결과 올바른 네트워크는 거래 기능에서만 요구한다. 6단계에서 거래 버튼을 `NetworkGuard`로 감싸, 연결 안 됨 → "지갑 연결", 다른 네트워크 → "네트워크 전환"을 그 자리에서 안내한다.
+- 지갑 연결과 올바른 네트워크는 거래 기능에서만 요구한다. 거래 버튼을 `NetworkGuard`로 감싸, 연결 안 됨 → "지갑 연결", 다른 네트워크 → "네트워크 전환"을 그 자리에서 안내한다.
+- 내 거래(`/my`): 서버는 연결된 지갑을 알 수 없으므로 클라이언트의 `AccountSync`가 연결 계정을 주소창 `?account=`에 넣고(`router.replace`), 서버가 그 주소로 조회한다. MetaMask에서 계정을 바꾸면 화면도 따라 바뀐다. 주소는 공개 정보이므로 URL에 들어가도 문제없다. 지갑 없이 `?account=`로 다른 주소를 조회할 수는 있지만 출금 버튼은 그 계정으로 연결해야 나온다.
 
 - 연결 상태(계정, chainId, 진행 중 요청, 오류)는 `hooks/useWallet.ts`의 **모듈 단위 저장소 하나**에 두고 `useSyncExternalStore`로 구독한다. 모든 컴포넌트가 같은 상태를 보므로 별도 Context Provider(`WalletProvider`)를 두지 않는다.
   - 이전 설계(WalletProvider context)에서 변경한 이유: 상태 공유에 Provider가 필요 없고, 서버 렌더링·hydration 중에는 고정된 초기 상태("checking")를 쓰므로 서버/클라이언트 출력 불일치가 생기지 않는다.

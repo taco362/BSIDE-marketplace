@@ -2,10 +2,11 @@
  * 브라우저 지갑(MetaMask, EIP-1193) 접근 (docs/architecture.md 3.2)
  * 클라이언트 컴포넌트·훅에서만 사용한다 (window.ethereum).
  *
- * 5단계: 계정 조회·연결 요청·네트워크 확인·전환
- * 6단계: 트랜잭션 서명용 BrowserProvider·Signer를 이 파일에 추가한다.
+ * - 계정 조회·연결 요청·네트워크 확인·전환
+ * - 트랜잭션 서명용 Signer (getSigner)
  * 브라우저는 MetaMask가 연결한 노드를 사용하므로 RPC 주소를 알 필요가 없다.
  */
+import { BrowserProvider, type JsonRpcSigner } from "ethers";
 import { DEPLOYMENT } from "@/lib/contracts";
 
 /** 이 앱이 사용하는 체인 (deployment.json 기준: 로컬 31337 / Sepolia 11155111) */
@@ -66,6 +67,21 @@ export async function getChainId(): Promise<number> {
 
 export function parseChainId(chainIdHex: string): number {
   return Number.parseInt(chainIdHex, 16);
+}
+
+/**
+ * 트랜잭션 서명용 Signer (연결된 첫 계정)
+ * 네트워크가 바뀌면 ethers의 BrowserProvider가 오류를 내므로, 호출할 때마다 새로 만든다.
+ */
+export async function getSigner(): Promise<JsonRpcSigner> {
+  const ethereum = requireEthereum();
+  const chainId = await getChainId();
+  if (chainId !== EXPECTED_CHAIN_ID) {
+    throw new WalletError(`MetaMask 네트워크가 다릅니다 (현재 chainId ${chainId}, 필요 ${EXPECTED_CHAIN_ID}). 네트워크를 전환하세요.`);
+  }
+  const accounts = await getAccounts();
+  if (accounts.length === 0) throw new WalletError("지갑이 연결되어 있지 않습니다.");
+  return new BrowserProvider(ethereum, chainId).getSigner(accounts[0]);
 }
 
 /** 앱이 사용하는 체인으로 전환 요청 */

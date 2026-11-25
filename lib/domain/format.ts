@@ -15,6 +15,14 @@ export function formatEth(wei: bigint): string {
   return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""} ETH`;
 }
 
+/** "0.05" → wei. 숫자·소수점 외 문자, 소수 18자리 초과, 빈 값이면 null */
+export function parseEth(text: string): bigint | null {
+  const match = /^(\d+)(?:\.(\d{1,18}))?$/.exec(text.trim());
+  if (!match) return null;
+  const [, whole, fraction = ""] = match;
+  return BigInt(whole) * WEI_PER_ETH + BigInt(fraction.padEnd(18, "0"));
+}
+
 /** 0x1234…abcd */
 export function shortenAddress(address: string): string {
   if (address.length < 12) return address;

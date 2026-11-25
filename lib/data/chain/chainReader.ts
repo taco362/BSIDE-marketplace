@@ -11,10 +11,12 @@ import { cache } from "react";
 import { connection } from "next/server";
 import { unstable_rethrow } from "next/navigation";
 import type { Contract } from "ethers";
-import { getEscrowContract, getNftContract } from "@/lib/contracts";
+import { DEPLOYMENT, getEscrowContract, getNftContract } from "@/lib/contracts";
+import { isSameAddress } from "@/lib/domain/format";
 import type { Listing, ListingWithToken, Token, TokenHistory } from "@/lib/domain/types";
 import type { MarketReader } from "../reader";
 import { readAccounts } from "./accounts";
+import { readArtists } from "./artists";
 import { toChainReadError } from "./errors";
 import { eventsFromListings, readTokenEvents } from "./events";
 import { toListing, toToken, type RawListingView, type RawTokenView } from "./mappers";
@@ -85,6 +87,17 @@ const readListingsByToken = cache(async (tokenId: number): Promise<Listing[]> =>
   return (await readAllListings()).filter((l) => l.tokenId === tokenId);
 });
 
+/** 거래에 토큰 정보를 붙인다 (거래 ID 오름차순 입력 → 같은 순서) */
+async function withTokens(listings: Listing[]): Promise<ListingWithToken[]> {
+  const tokensById = new Map((await readAllTokens()).map((t) => [t.tokenId, t]));
+  const result: ListingWithToken[] = [];
+  for (const listing of listings) {
+    const token = tokensById.get(listing.tokenId);
+    if (token) result.push({ listing, token });
+  }
+  return result;
+}
+
 // ───────────────────────── MarketReader 구현 ─────────────────────────
 
 /**
@@ -105,14 +118,8 @@ function safely<A extends unknown[], R>(fn: (...args: A) => Promise<R>): (...arg
 
 export const chainReader: MarketReader = {
   getActiveListings: safely(async (): Promise<ListingWithToken[]> => {
-    const [listings, tokens] = await Promise.all([readAllListings(), readAllTokens()]);
-    const tokensById = new Map(tokens.map((t) => [t.tokenId, t]));
-    const result: ListingWithToken[] = [];
-    for (const listing of listings) {
-      const token = tokensById.get(listing.tokenId);
-      if (listing.status === "LISTED" && token) result.push({ listing, token });
-    }
-    return result.reverse();
+    const listings = await readAllListings();
+    return (await withTokens(listings.filter((l) => l.status === "LISTED"))).reverse();
   }),
 
   getListing: safely(async (listingId: number): Promise<ListingWithToken | null> => {
@@ -143,4 +150,26 @@ export const chainReader: MarketReader = {
   }),
 
   getAccounts: safely(readAccounts),
+
+  getTokensByOwner: safely(async (owner: string): Promise<Token[]> => {
+    return (await readAllTokens()).filter((t) => isSameAddress(t.owner, owner));
+  }),
+
+  getListingsByAccount: safely(async (account: string) => {
+    const listings = await readAllListings();
+    const [selling, buying] = await Promise.all([
+      withTokens(listings.filter((l) => isSameAddress(l.seller, account))),
+      withTokens(listings.filter((l) => isSameAddress(l.buyer, account))),
+    ]);
+    return { selling: selling.reverse(), buying: buying.reverse() };
+  }),
+
+  getPendingWithdrawal: safely(async (account: string): Promise<bigint> => {
+    await connection();
+    return (await escrow().pendingWithdrawals(account)) as bigint;
+  }),
+
+  getArtists: safely(readArtists),
+
+  getAdmin: async () => DEPLOYMENT.admin,
 };

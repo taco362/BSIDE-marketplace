@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
+import { SiteNav } from "./_components/SiteNav";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,9 +26,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <header className="border-b border-zinc-200 dark:border-zinc-800">
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3">
-            <Link href="/" className="text-lg font-bold tracking-tight">
-              B-SIDE
-            </Link>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+              <Link href="/" className="text-lg font-bold tracking-tight">
+                B-SIDE
+              </Link>
+              <SiteNav />
+            </div>
             <ConnectButton />
           </div>
         </header>

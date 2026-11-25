@@ -6,14 +6,12 @@ import "server-only";
  * - eventsFromListings: 로그 조회 실패 시 Listing에 저장된 시각으로 대체
  */
 import { connection } from "next/server";
-import { toBeHex, zeroPadValue, type Log } from "ethers";
+import { toBeHex, zeroPadValue } from "ethers";
 import { DEPLOYMENT, getEscrowContract } from "@/lib/contracts";
 import { CANCEL_REASONS, type Listing, type TradeEvent } from "@/lib/domain/types";
+import { getLogsInRanges } from "./logs";
 import { enumValue } from "./mappers";
 import { getProvider } from "./provider";
-
-/** eth_getLogs 한 번에 조회하는 블록 수. 무료 RPC의 범위 제한에 맞춰 조정한다 (Sepolia 배포 시 확인) */
-const LOG_BLOCK_RANGE = 10_000;
 
 /** tokenId가 두 번째 indexed 인자인 이벤트 */
 const TOKEN_EVENTS = ["Listed", "Purchased", "Completed", "Cancelled", "Disputed"];
@@ -36,17 +34,10 @@ export async function readTokenEvents(tokenId: number, listingIds: number[]): Pr
   // DisputeResolved에는 tokenId가 없으므로 이 토큰의 거래 ID로 찾는다
   const resolvedFilter = [topicOf("DisputeResolved"), listingIds.map(toTopic)];
 
-  const latest = await provider.getBlockNumber();
-  const logs: Log[] = [];
-  for (let from = DEPLOYMENT.contracts.BSideEscrow.deployBlock; from <= latest; from += LOG_BLOCK_RANGE) {
-    const to = Math.min(from + LOG_BLOCK_RANGE - 1, latest);
-    const [tokenLogs, resolvedLogs] = await Promise.all([
-      provider.getLogs({ address, fromBlock: from, toBlock: to, topics: tokenEventFilter }),
-      provider.getLogs({ address, fromBlock: from, toBlock: to, topics: resolvedFilter }),
-    ]);
-    logs.push(...tokenLogs, ...resolvedLogs);
-  }
-  logs.sort((a, b) => a.blockNumber - b.blockNumber || a.index - b.index);
+  const logs = await getLogsInRanges(address, DEPLOYMENT.contracts.BSideEscrow.deployBlock, [
+    tokenEventFilter,
+    resolvedFilter,
+  ]);
 
   const blockNumbers = [...new Set(logs.map((log) => log.blockNumber))];
   const blocks = await Promise.all(blockNumbers.map((n) => provider.getBlock(n)));

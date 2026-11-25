@@ -5,9 +5,10 @@ import { ListingStatusBadge } from "@/components/listing/ListingStatusBadge";
 import { TokenSummary } from "@/components/token/TokenSummary";
 import { getMarketReader } from "@/lib/data";
 import { formatEth } from "@/lib/domain/format";
+import { ListingActions } from "./_components/ListingActions";
 import { ListingInfo } from "./_components/ListingInfo";
 
-/** 거래 상세. 구매·승인 등 거래 버튼은 6단계에서 추가한다. */
+/** 거래 상세: 현재 상태와 상태·역할별 거래 버튼 */
 export default function ListingPage({ params }: PageProps<"/listings/[id]">) {
   return (
     <main>
@@ -40,6 +41,11 @@ async function ListingDetail({ params }: Pick<PageProps<"/listings/[id]">, "para
           <ListingStatusBadge status={listing.status} />
         </div>
       </div>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">거래하기</h2>
+        <ListingActions listing={listing} />
+      </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">거래 정보</h2>
