@@ -4,7 +4,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| [docs/proposal.md](docs/proposal.md) | 요구사항과 확정 정책 (D1~D10) |
+| [docs/proposal.md](docs/proposal.md) | 요구사항과 확정 정책 (D1~D13) |
 | [docs/architecture.md](docs/architecture.md) | 시스템 구조, 컨트랙트 설계, 데이터 흐름 |
 | [docs/progress.md](docs/progress.md) | 개발 단계와 진행 상황 |
 

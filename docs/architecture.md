@@ -1,7 +1,7 @@
 # B-SIDE — 시스템 아키텍처
 
 > 이 문서는 B-SIDE를 **어떻게 구현하는가**를 정의한다.
-> 서비스 요구사항과 정책 결정(D1~D10)은 [proposal.md](proposal.md)가 기준이며, 이 문서는 그 결정을 따른다.
+> 서비스 요구사항과 정책 결정(D1~D13)은 [proposal.md](proposal.md)가 기준이며, 이 문서는 그 결정을 따른다.
 > 정책과 이 문서가 충돌하면 proposal.md를 우선하고, 이 문서를 수정한다.
 > 상태: 설계 확정, 구현 진행 중 (진행 상황은 [progress.md](progress.md))
 
@@ -60,7 +60,7 @@ b-side/
 │  ├─ sell/[tokenId]/             # 판매 등록 (page.tsx + _components/SellForm). NFT 선택은 my의 보유 NFT 목록에서
 │  ├─ my/                         # 출금, 보유 NFT, 판매·구매 거래 (?account=, 6.5) (+ _components/AccountSync, WithdrawPanel, MyTokenList, MyListingsTable)
 │  ├─ admin/                      # 아티스트 등록·활동명 변경·회수 (+ _components/RegisterArtistForm, ArtistTable, RevokeArtistButton). 분쟁 중재는 Phase 2
-│  └─ api/ipfs/route.ts           # Pinata 업로드 (Phase 2)
+│  └─ api/ipfs/                   # Pinata 업로드 (Phase 2, 6.3): images/route.ts(U1), condition/route.ts(U2), metadata/route.ts(U3)
 ├─ components/                    # 여러 페이지에서 재사용하는 UI
 │  ├─ ui/                         # 도메인과 무관한 기본 요소 (DetailList, IpfsLink, CopyButton, FormField)
 │  ├─ account/                    # AccountLabel (활동명·인증 표시·축약/전체 주소, D7)
@@ -82,7 +82,8 @@ b-side/
 │  │  ├─ policy.ts                # 정책 표시 이름, 수치 범위, 가격 상한·판매 가격 규칙 미리 계산 (화면 안내용)
 │  │  ├─ format.ts                # wei↔ETH 변환, 주소 축약
 │  │  ├─ account.ts               # 계정 표시 정보 찾기, 표시 대상 주소 모으기
-│  │  └─ validation.ts            # 거래 화면 입력 형식 확인 (URI·CID·주소·활동명·정책 수치)
+│  │  ├─ validation.ts            # 거래 화면 입력 형식 확인 (URI·CID·주소·활동명·정책 수치)
+│  │  └─ upload.ts                # 업로드 제한 값, 업로드 확인 서명 문장 (6.3)
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
 │  │  ├─ chain/provider.ts        # 서버 조회용 JsonRpcProvider (server-only, RPC_URL 사용)
@@ -100,6 +101,7 @@ b-side/
 │  │  └─ errors.ts                # 트랜잭션 오류·custom error → 한국어 안내 문구
 │  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer (client)
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
+│  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts (server-only, 6.3)
 │  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소(Pinata 공개 게이트웨이), CID → URL 변환
 ├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
 │  ├─ hardhat.config.ts         # solc 0.8.28, sepolia 네트워크 (configVariable)
@@ -133,7 +135,7 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
   - 라우트 페이지(app)도 `lib/tx`의 함수를 쓰는 클라이언트 컴포넌트(`_components/`)에서만 위 방식으로 참조한다.
 - **lib/contracts가 주소·ABI의 단일 출처다**: `lib/data`와 `lib/tx`는 주소나 ABI를 직접 갖지 않고 `lib/contracts`의 함수로 컨트랙트 객체를 얻는다.
 - **lib/domain은 외부에 의존하지 않는다**: 타입과 순수 함수만 두며, 서버·클라이언트 양쪽에서 쓴다. `policy.ts`의 가격 상한 계산은 화면 안내용이고, 최종 검증은 항상 컨트랙트가 한다. 계산 규칙은 4.2와 같아야 한다.
-- **server-only 모듈**(`lib/data/chain`, `lib/ipfs`)은 클라이언트 컴포넌트에서 import하지 않는다.
+- **server-only 모듈**(`lib/data/chain`, `lib/ipfs`, `lib/upload`)은 클라이언트 컴포넌트에서 import하지 않는다.
 - **필요할 때 만든다**: 폴더, 컴포넌트, 추상화는 실제로 쓰는 기능을 구현할 때 추가한다. 아직 쓰지 않는 선택 로직이나 빈 파일은 만들지 않는다.
 
 ### 3.2 Provider와 Signer 분리
@@ -479,25 +481,78 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 
 - 판매자 환불(`refundBySeller`), 분쟁 제기(`openDispute`), 중재(`resolveDispute`) 화면은 Phase 2에서 추가한다.
 
-### 6.3 IPFS 업로드 흐름 (Phase 2)
+### 6.3 IPFS 업로드 흐름 (Phase 2, proposal.md D11~D13)
 
-1. 브라우저에서 사진과 상태 정보를 `POST /api/ipfs`로 보낸다.
-2. Route Handler가 파일 형식, 크기, 개수를 검증한다. 제한 값은 Phase 2 전에 결정한다.
-3. 서버가 `PINATA_JWT`로 사진을 업로드하고, 사진 CID를 포함한 상태 기록 JSON을 업로드한다.
-4. 상태 기록 JSON의 CID를 브라우저에 돌려주고, 브라우저는 이 CID로 `list`를 호출한다.
+사용자는 Pinata를 직접 쓰지 않는다. 브라우저가 우리 서버(Route Handler)로 보내고, 서버가 `PINATA_JWT`로 Pinata에 올린 뒤 CID만 돌려준다.
 
-상태 기록 JSON (필수 항목은 Phase 2 전 확정):
+```
+브라우저                                   Next.js 서버                         Pinata
+ ① 업로드 확인 메시지 서명 (MetaMask, 가스비 없음, 1회)
+ ② 사진 1장씩 POST /api/ipfs/images ──▶ 서명·시각·권한·형식·용량 확인 ──▶ 업로드 → 사진 CID
+ ③ POST /api/ipfs/condition (U2)  ──▶ 같은 확인 + 상태 기록 JSON 작성 ──▶ 업로드 → 기록 CID
+    또는 POST /api/ipfs/metadata (U3)    메타데이터 JSON 작성
+ ④ 받은 CID로 list / mint 트랜잭션 (기존 6.2 흐름)
+```
+
+업로드 확인 서명 (D12):
+- 형식: EIP-191 `personal_sign`. 서명할 문장은 `lib/domain/upload.ts`의 `buildUploadMessage`가 만들며 브라우저와 서버가 같은 함수를 쓴다. MetaMask에 그대로 보이므로 사람이 읽을 수 있는 한국어 문장으로 한다.
+  ```
+  B-SIDE 업로드 확인
+  용도: 상품 상태 기록 (NFT #1)      ← 또는 "NFT 발행 메타데이터"
+  지갑: 0x…
+  체인: 31337
+  시각: 1764141600
+  이 서명은 가스비가 들지 않으며 거래를 실행하지 않습니다.
+  ```
+- 서버는 요청의 `purpose`·`tokenId`·`address`·`issuedAt`으로 같은 문장을 다시 만들고 `verifyMessage`로 서명자를 복원해 `address`와 비교한다. 체인 ID는 `deployment.json` 값을 쓰므로 다른 체인용 서명은 통과하지 못한다.
+- 유효 시간: `issuedAt`이 현재 시각 기준 과거 300초 이내, 미래 60초 이내여야 한다. 한 번 서명하면 그 시간 안에 사진 여러 장과 기록 JSON을 올릴 수 있다.
+- 한계: DB가 없어 사용한 서명을 기록하지 않으므로, 유효 시간 안에서는 같은 서명이 재사용될 수 있다. 서명자가 권한을 가진 경우에만 통과하므로 피해는 용량 사용에 한정된다.
+- 권한 확인은 서명 확인 후 체인에서 한다 (`MarketReader` 사용):
+  - `condition`: 서명자가 해당 NFT의 현재 소유자여야 한다 (에스크로 예치 중이면 거부).
+  - `metadata`: 서명자가 현재 승인된 아티스트(`ARTIST_ROLE`)여야 한다.
+
+사진 업로드 `POST /api/ipfs/images` (U1, multipart):
+
+| 필드 | 내용 |
+|---|---|
+| `file` | 사진 1장 |
+| `purpose` | `condition` 또는 `metadata` |
+| `tokenId` | `condition`일 때 필수 |
+| `address`, `issuedAt`, `signature` | 업로드 확인 서명 |
+
+- 형식은 파일 앞부분의 바이트(시그니처)로 판별한다: JPEG·PNG·WebP만 허용한다. 브라우저가 보낸 MIME 타입과 파일 이름은 믿지 않는다.
+- 크기: 장당 4MB 이하 (D11). 요청의 `Content-Length`가 한도(4MB + 여유 64KB)를 넘으면 본문을 읽기 전에 거부한다. 호스팅(Vercel)의 요청 크기 제한(4.5MB) 안에 들도록 사진은 한 장씩 보낸다.
+- Pinata에 올리는 파일 이름은 사용자 파일 이름 대신 `condition-token1-<시각>.jpg`처럼 서버가 정한다 (원본 파일 이름의 개인정보 노출 방지).
+- 응답: 성공 `200 { cid }`. 실패 `{ error }`와 상태 코드 400(입력 형식), 401(서명·유효 시간), 403(권한), 413(크기), 415(형식), 502(Pinata 실패), 500(서버 설정 누락). 오류 문구에는 비밀값·원본 오류를 넣지 않고 원본은 서버 로그에만 남긴다.
+- 사진 개수(1~5장)는 사진을 묶는 상태 기록 JSON 단계(U2)에서 확인한다. 사진만 올리고 판매 등록을 그만두면 사용되지 않는 사진이 Pinata에 남는다 (MVP 허용).
+
+상태 기록 JSON (U2, D11·D12). `tokenId`·`seller`·`createdAt`·`images`는 서버가 채운다:
 ```json
 {
   "tokenId": 1,
   "seller": "0x...",
   "sealed": true,
   "condition": "사용 상태 설명",
-  "defects": "하자 정보",
+  "defects": "없음",
   "images": ["<사진 CID>"],
   "createdAt": "ISO 8601"
 }
 ```
+- 사진 CID 목록은 브라우저가 ②에서 받은 값을 보낸다. 서버는 형식과 개수(1~5)만 확인하며, 그 사진을 같은 사용자가 올렸는지는 확인하지 않는다 (DB 없음).
+- 한계 (proposal.md D12): 화면을 거치지 않고 컨트랙트 `list`를 직접 호출하면 임의의 CID로 등록할 수 있다.
+
+발행 메타데이터 JSON (U3, D13): `{ "name", "description", "image": "ipfs://<대표 이미지 CID>" }`. 대표 이미지는 1장, 사진과 같은 형식·용량 제한.
+
+모듈 구성:
+
+| 파일 | 역할 |
+|---|---|
+| `lib/domain/upload.ts` | 업로드 제한 값(개수·용량·형식), 용도 타입, 서명 문장 만들기 (서버·브라우저 공용, 외부 의존 없음) |
+| `lib/ipfs/pinata.ts` | Pinata v3 업로드 (`POST https://uploads.pinata.cloud/v3/files`, `network=public`) (server-only) |
+| `lib/upload/auth.ts` | 서명·유효 시간·권한 확인 (server-only, 권한은 `MarketReader`로 조회) |
+| `lib/upload/image.ts` | 바이트 시그니처로 사진 형식 판별, 크기 확인 (server-only) |
+| `lib/upload/errors.ts` | `UploadError(status, 안내 문구)` (server-only) |
+| `app/api/ipfs/images/route.ts` | 요청 해석 → 확인 → 업로드 → 응답만 한다 |
 
 ### 6.4 Phase 1의 CID 사용
 
@@ -533,7 +588,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 | Hardhat keystore (`contracts/`) | `SEPOLIA_PRIVATE_KEY`, `SEPOLIA_RPC_URL` | 컨트랙트 배포 | 로컬 전용 (암호화 저장) |
 
 - `NEXT_PUBLIC_` 접두사가 붙은 변수만 브라우저 번들에 포함된다. 비밀값에는 붙이지 않으며, 현재 계획에는 `NEXT_PUBLIC_` 변수가 없다 (3.2).
-- RPC·Pinata를 다루는 모듈(`lib/data/chain/*`, `lib/ipfs/*`)은 첫 줄에 `import 'server-only'`를 둔다. 클라이언트 컴포넌트가 실수로 가져오면 빌드가 실패한다.
+- RPC·Pinata를 다루는 모듈(`lib/data/chain/*`, `lib/ipfs/*`, `lib/upload/*`)은 첫 줄에 `import 'server-only'`를 둔다. 클라이언트 컴포넌트가 실수로 가져오면 빌드가 실패한다.
 - Route Handler의 응답과 Server Component가 클라이언트 컴포넌트에 넘기는 props에는 비밀값이나 RPC 주소를 넣지 않는다. 업로드 응답은 CID만 돌려준다.
 - RPC 주소에 API 키가 포함된 경우(Alchemy·Infura 등)도 비밀값으로 취급한다.
 - `.env*` 파일은 `.gitignore`에 포함하고, 저장소에는 값 없는 루트 `.env.example`만 커밋한다.
