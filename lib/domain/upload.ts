@@ -43,6 +43,33 @@ export interface ConditionRecord extends ConditionInput {
   createdAt: string;
 }
 
+/** 발행 메타데이터 글자 수 상한 (구현 상한, 정책 값 아님) */
+export const MAX_METADATA_NAME = 100;
+export const MAX_METADATA_DESCRIPTION = 1000;
+
+/** 아티스트가 입력하는 발행 메타데이터 (D13). 대표 이미지는 1장 */
+export interface MetadataInput {
+  name: string;
+  description: string;
+}
+
+/** IPFS에 올라가는 NFT 메타데이터 JSON (architecture.md 6.3, 6.4와 같은 형식) */
+export interface MetadataRecord extends MetadataInput {
+  /** ipfs://<대표 이미지 CID> */
+  image: string;
+}
+
+/** 발행 메타데이터 입력 확인. 문제가 있으면 안내 문구, 없으면 null */
+export function checkMetadataInput(input: MetadataInput): string | null {
+  if (!input.name.trim()) return "굿즈 이름을 입력하세요.";
+  if (input.name.length > MAX_METADATA_NAME) return `굿즈 이름은 ${MAX_METADATA_NAME}자 이하로 입력하세요.`;
+  if (!input.description.trim()) return "설명을 입력하세요.";
+  if (input.description.length > MAX_METADATA_DESCRIPTION) {
+    return `설명은 ${MAX_METADATA_DESCRIPTION}자 이하로 입력하세요.`;
+  }
+  return null;
+}
+
 /** CID 형식 (v0: Qm…, v1: base32 b…) */
 export function isCid(value: unknown): value is string {
   return typeof value === "string" && /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{50,})$/.test(value);

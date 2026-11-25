@@ -3,12 +3,18 @@
  * - signUploadAuth: 업로드 확인 문장에 MetaMask로 서명 (가스비 없음, personal_sign)
  * - uploadImage: 사진 1장 → POST /api/ipfs/images → 사진 CID
  * - uploadCondition: 상태 정보 + 사진 CID → POST /api/ipfs/condition → 상태 기록 CID
+ * - uploadMetadata: 이름·설명 + 대표 이미지 CID → POST /api/ipfs/metadata → 메타데이터 CID
  * Pinata 키는 서버에만 있다. 브라우저는 우리 서버 API만 호출한다.
  */
 import type { Signer } from "ethers";
 import { DEPLOYMENT } from "@/lib/contracts";
 import { UserFacingError } from "@/lib/domain/errors";
-import { buildUploadMessage, type ConditionInput, type UploadPurpose } from "@/lib/domain/upload";
+import {
+  buildUploadMessage,
+  type ConditionInput,
+  type MetadataInput,
+  type UploadPurpose,
+} from "@/lib/domain/upload";
 
 export class UploadRequestError extends UserFacingError {}
 
@@ -57,6 +63,23 @@ export async function uploadImage(file: File, auth: SignedUploadAuth): Promise<s
   form.append("issuedAt", String(auth.issuedAt));
   form.append("signature", auth.signature);
   return readResult(await post("/api/ipfs/images", { body: form }));
+}
+
+/** 발행 메타데이터 업로드 → 메타데이터 CID (mint에는 ipfs://<cid>로 넘긴다) */
+export async function uploadMetadata(
+  input: MetadataInput,
+  imageCid: string,
+  auth: SignedUploadAuth,
+): Promise<string> {
+  const body = JSON.stringify({
+    address: auth.address,
+    issuedAt: auth.issuedAt,
+    signature: auth.signature,
+    name: input.name,
+    description: input.description,
+    image: imageCid,
+  });
+  return readResult(await post("/api/ipfs/metadata", { body, headers: { "Content-Type": "application/json" } }));
 }
 
 export async function uploadCondition(

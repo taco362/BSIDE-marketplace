@@ -1,15 +1,23 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { TxStatus } from "@/components/tx/TxStatus";
 import { FormField, INPUT_CLASS, SubmitButton } from "@/components/ui/FormField";
+import { PhotoPicker, type SelectedPhoto } from "@/components/upload/PhotoPicker";
 import { NetworkGuard } from "@/components/wallet/NetworkGuard";
-import { useTx } from "@/hooks/useTx";
+import { useTx, type TxStep } from "@/hooks/useTx";
+import { signUploadAuth, uploadImage, uploadMetadata, type SignedUploadAuth } from "@/lib/api/upload";
 import { formatEth, isSameAddress, parseEth } from "@/lib/domain/format";
 import { POLICY_BPS_RANGE, POLICY_LABELS, describePolicy, formatBps, percentToBps } from "@/lib/domain/policy";
 import { POLICIES, type Policy } from "@/lib/domain/types";
-import { checkMetadataUri, checkPolicyBps } from "@/lib/domain/validation";
+import {
+  MAX_METADATA_DESCRIPTION,
+  MAX_METADATA_NAME,
+  checkMetadataInput,
+  type MetadataInput,
+} from "@/lib/domain/upload";
+import { checkPolicyBps } from "@/lib/domain/validation";
 import { mint, mintedTokenId } from "@/lib/tx/nft";
 
 const POLICY_HINTS: Record<Policy, string> = {
@@ -18,7 +26,10 @@ const POLICY_HINTS: Record<Policy, string> = {
   Free: "재판매 가격 제한과 의무 로열티가 없습니다.",
 };
 
-/** 발행 폼. 연결된 계정에게 발행된다. */
+/**
+ * 발행 폼 (D13). 연결된 계정에게 발행된다.
+ * 업로드 확인 서명 → 대표 이미지 업로드 → 메타데이터 업로드(서버가 Pinata에 올림) → mint(ipfs://<메타데이터 CID>)
+ */
 export function MintForm({ verifiedArtists }: { verifiedArtists: string[] }) {
   return (
     <NetworkGuard>
@@ -39,18 +50,21 @@ export function MintForm({ verifiedArtists }: { verifiedArtists: string[] }) {
 
 function Form() {
   const tx = useTx();
-  const [metadataUri, setMetadataUri] = useState("");
+  const [metadata, setMetadata] = useState<MetadataInput>({ name: "", description: "" });
+  const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [priceText, setPriceText] = useState("");
   const [policy, setPolicy] = useState<Policy>("PriceCap");
   const [percentText, setPercentText] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [tokenId, setTokenId] = useState<number | null>(null);
+  // 업로드 후 발행 서명을 거부한 경우, 입력이 같으면 다시 올리지 않고 같은 메타데이터 CID를 쓴다
+  const uploaded = useRef<{ key: string; cid: string } | null>(null);
 
-  const uri = metadataUri.trim();
   const price = parseEth(priceText);
   const bps = policy === "Free" ? 0 : percentToBps(percentText);
   const errors = {
-    uri: checkMetadataUri(uri),
+    metadata: checkMetadataInput(metadata),
+    image: photos.length === 1 ? null : "대표 이미지를 1장 올리세요.",
     price: price === null || price <= BigInt(0) ? "0보다 큰 ETH 금액을 입력하세요 (예: 0.05)." : null,
     bps: checkPolicyBps(policy, bps),
   };
@@ -59,33 +73,93 @@ function Form() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
-    if (errors.uri || errors.price || errors.bps || price === null || bps === null) return;
-    const summary = `최초 판매가 ${formatEth(price)}, ${POLICY_LABELS[policy]} (${describePolicy(policy, bps)})`;
-    if (!window.confirm(`${summary}\n\n발행 후에는 최초 판매가·정책·메타데이터를 바꿀 수 없습니다. 발행할까요?`)) return;
+    if (errors.metadata || errors.image || errors.price || errors.bps || price === null || bps === null) return;
+    const summary = `"${metadata.name.trim()}" · 최초 판매가 ${formatEth(price)}, ${POLICY_LABELS[policy]} (${describePolicy(policy, bps)})`;
+    if (!window.confirm(`${summary}\n\n발행 후에는 이름·설명·이미지와 최초 판매가·정책을 바꿀 수 없습니다. 발행할까요?`)) return;
 
     setTokenId(null);
-    const input = { metadataUri: uri, initialPrice: price, policy, policyBps: bps };
-    const receipts = await tx.run([{ label: "NFT 발행", send: (s) => mint(s, input) }]);
-    if (receipts?.[0]) setTokenId(mintedTokenId(receipts[0]));
+    const photo = photos[0];
+    const inputKey = JSON.stringify([metadata, photo.id]);
+    let metadataCid = uploaded.current?.key === inputKey ? uploaded.current.cid : null;
+    let auth: SignedUploadAuth | null = null;
+    let imageCid = "";
+
+    const uploadSteps: TxStep[] = metadataCid
+      ? []
+      : [
+          {
+            label: "업로드 확인 서명 (가스비 없음)",
+            send: async (s) => {
+              auth = await signUploadAuth(s, "metadata", null);
+              return null;
+            },
+          },
+          {
+            label: "대표 이미지 업로드",
+            kind: "work",
+            send: async () => {
+              imageCid = await uploadImage(photo.file, auth as SignedUploadAuth);
+              return null;
+            },
+          },
+          {
+            label: "메타데이터 업로드",
+            kind: "work",
+            send: async () => {
+              metadataCid = await uploadMetadata(metadata, imageCid, auth as SignedUploadAuth);
+              uploaded.current = { key: inputKey, cid: metadataCid };
+              return null;
+            },
+          },
+        ];
+
+    const receipts = await tx.run([
+      ...uploadSteps,
+      {
+        label: "NFT 발행",
+        send: (s) =>
+          mint(s, { metadataUri: `ipfs://${metadataCid}`, initialPrice: price, policy, policyBps: bps }),
+      },
+    ]);
+    const mintReceipt = receipts?.at(-1);
+    if (mintReceipt) {
+      uploaded.current = null; // 다음 발행은 새로 올린다
+      setTokenId(mintedTokenId(mintReceipt));
+    }
   }
 
   return (
     <form onSubmit={onSubmit} className="flex max-w-xl flex-col gap-5">
-      <FormField
-        label="메타데이터 URI"
-        htmlFor="metadata-uri"
-        hint="Pinata에 업로드한 메타데이터 JSON(name, description, image)의 CID. 가짜·임시 CID로 발행하지 마세요."
-        error={submitted ? errors.uri : null}
-      >
+      <FormField label="굿즈 이름" htmlFor="metadata-name" error={submitted ? errors.metadata : null}>
         <input
-          id="metadata-uri"
-          value={metadataUri}
-          onChange={(e) => setMetadataUri(e.target.value)}
-          placeholder="ipfs://bafk…"
+          id="metadata-name"
+          value={metadata.name}
+          onChange={(e) => setMetadata({ ...metadata, name: e.target.value })}
+          maxLength={MAX_METADATA_NAME}
+          placeholder="예: ballad of you LP"
           autoComplete="off"
-          className={`${INPUT_CLASS} font-mono`}
+          disabled={tx.busy}
+          className={INPUT_CLASS}
         />
       </FormField>
+
+      <FormField label="설명" htmlFor="metadata-description">
+        <textarea
+          id="metadata-description"
+          value={metadata.description}
+          onChange={(e) => setMetadata({ ...metadata, description: e.target.value })}
+          maxLength={MAX_METADATA_DESCRIPTION}
+          rows={3}
+          disabled={tx.busy}
+          className={INPUT_CLASS}
+        />
+      </FormField>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">대표 이미지</span>
+        <PhotoPicker id="metadata-image" value={photos} onChange={setPhotos} max={1} disabled={tx.busy} />
+        {submitted && errors.image && <p className="text-xs text-red-600">{errors.image}</p>}
+      </div>
 
       <FormField
         label="최초 판매가 (ETH)"
@@ -143,6 +217,10 @@ function Form() {
         </FormField>
       )}
 
+      <p className="text-xs text-zinc-500">
+        이름·설명·이미지는 NFT 메타데이터로 IPFS에 올라가며 발행 후 바꿀 수 없습니다. MetaMask 요청은 2번입니다 (업로드 확인
+        서명, NFT 발행).
+      </p>
       <SubmitButton disabled={tx.busy}>{tx.busy ? "처리 중…" : "발행"}</SubmitButton>
       <TxStatus
         state={tx}

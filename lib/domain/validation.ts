@@ -8,13 +8,6 @@ import type { Policy } from "./types";
 /** BSideNFT.MAX_ARTIST_NAME_BYTES */
 export const MAX_ARTIST_NAME_BYTES = 64;
 
-/** 발행 메타데이터 URI: ipfs://<CID> (architecture.md 6.4) */
-export function checkMetadataUri(uri: string): string | null {
-  if (!uri) return "메타데이터 URI를 입력하세요.";
-  if (!/^ipfs:\/\/\S+$/.test(uri)) return "ipfs://<CID> 형식으로 입력하세요 (Pinata에 업로드한 메타데이터 JSON의 CID).";
-  return null;
-}
-
 /** 정책 수치 범위 (D3) */
 export function checkPolicyBps(policy: Policy, bps: number | null): string | null {
   const range = POLICY_BPS_RANGE[policy];
