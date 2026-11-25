@@ -68,7 +68,8 @@ b-side/
 │  ├─ listing/                    # ListingStatusBadge
 │  ├─ token/                      # TokenSummary, PolicyBadge
 │  ├─ tx/                         # TxStatus (서명 대기·처리 중·블록 포함 대기·성공·실패 표시), TxButton (입력 없는 단일 동작 버튼)
-│  └─ upload/                     # PhotoPicker (사진 선택·미리보기, 6.3)
+│  ├─ upload/                     # PhotoPicker (사진 선택·미리보기, 6.3)
+│  └─ condition/                  # ConditionRecordView (거래별 상품 상태 기록 표시, 6.6)
 ├─ hooks/                         # 클라이언트 상태 훅
 │  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (모듈 단위 저장소 + useSyncExternalStore, 6.5)
 │  ├─ useTx.ts                    # 트랜잭션 단계 실행·진행 상태·오류 문구, 성공 시 router.refresh() (6.2)
@@ -84,7 +85,8 @@ b-side/
 │  │  ├─ format.ts                # wei↔ETH 변환, 주소 축약
 │  │  ├─ account.ts               # 계정 표시 정보 찾기, 표시 대상 주소 모으기
 │  │  ├─ validation.ts            # 거래 화면 입력 형식 확인 (URI·CID·주소·활동명·정책 수치)
-│  │  └─ upload.ts                # 업로드 제한 값, 업로드 확인 서명 문장 (6.3)
+│  │  ├─ upload.ts                # 업로드 제한 값, 업로드 확인 서명 문장, 상태 기록 타입 (6.3)
+│  │  └─ conditionRecord.ts       # 상태 기록 형식 확인, 거래와 어긋남 경고 (6.6)
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
 │  │  ├─ chain/provider.ts        # 서버 조회용 JsonRpcProvider (server-only, RPC_URL 사용)
@@ -95,6 +97,7 @@ b-side/
 │  │  ├─ chain/accounts.ts        # 주소별 활동명·인증 여부 조회 (server-only)
 │  │  ├─ chain/artists.ts         # ArtistRegistered 이벤트로 등록된 아티스트 목록 (server-only)
 │  │  ├─ chain/logs.ts            # 이벤트 로그 구간 나누어 조회 (server-only)
+│  │  ├─ ipfs/conditionRecords.ts # 상태 기록 조회 (server-only, 6.6)
 │  │  └─ index.ts                 # getMarketReader(): chainReader 반환 (구현체 선택 로직 없음)
 │  ├─ tx/                         # 쓰기 전용 (client), 컨트랙트별로 분리
 │  │  ├─ nft.ts                   # mint, approve(필요할 때만), 아티스트 등록·회수, 발행 영수증에서 토큰 ID 찾기
@@ -103,7 +106,7 @@ b-side/
 │  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer (client)
 │  ├─ api/upload.ts               # 업로드 확인 서명, /api/ipfs/* 호출 (client, 6.3)
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
-│  ├─ ipfs/gateway.ts             # 게이트웨이에서 IPFS JSON 읽기 (server-only, 최초 판매 상태 기록)
+│  ├─ ipfs/gateway.ts             # 게이트웨이에서 CID의 JSON 읽기 (server-only, 최초 판매 상태 기록·6.6 표시)
 │  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts (server-only, 6.3)
 │  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소(Pinata 공개 게이트웨이), CID → URL 변환
 ├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
@@ -558,7 +561,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 }
 ```
 - 같은 `POST /api/ipfs/condition`을 쓴다. 최초 판매인지는 요청 값이 아니라 체인의 NFT 정보로 서버가 정한다: 서명자가 아티스트이고 최초 판매 자격이 남아 있으면(`isPrimarySale`, `BSideEscrow.list`의 `isPrimary` 판정과 같음) 요청의 상태·사진 값은 무시하고 위 기록을 만든다. 그 외에는 재판매 기록이며 입력이 필수다.
-- 대표 이미지는 서버가 `tokenURI`의 메타데이터 JSON을 공개 게이트웨이에서 읽어(`lib/ipfs/gateway.ts`, 15초·64KB 제한) `image`가 `ipfs://<CID>`이면 그 CID를 쓴다. `image`가 없거나 IPFS 주소가 아니면 `images`는 빈 배열이다. 게이트웨이를 읽지 못하면 502로 거부한다 (다시 시도).
+- 대표 이미지는 서버가 `tokenURI`의 메타데이터 JSON을 공개 게이트웨이에서 읽어(`lib/ipfs/gateway.ts`, 15초·64KB 제한) `image`가 `ipfs://<CID>`이면 그 CID를 쓴다. `tokenURI`나 `image`가 `ipfs://<CID>` 형식이 아니거나 메타데이터가 JSON이 아니면 `images`는 빈 배열이다 (서버는 CID가 아닌 주소를 요청하지 않는다, 6.6). 게이트웨이 연결에 실패하면 502로 거부한다 (다시 시도).
 - 판매 등록 화면: 최초 판매는 상태·사진 입력 칸 대신 안내 문구를 보이고, 업로드 확인 서명 → 최초 판매 상태 기록 작성 → approve → list 순서로 진행한다. 서명은 재판매와 같이 필요하다 (소유자 확인, 남용 방지).
 - 한계 (proposal.md D12): 화면을 거치지 않고 컨트랙트 `list`를 직접 호출하면 임의의 CID로 등록할 수 있다.
 
@@ -617,6 +620,24 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
   - 이전 설계(WalletProvider context)에서 변경한 이유: 상태 공유에 Provider가 필요 없고, 서버 렌더링·hydration 중에는 고정된 초기 상태("checking")를 쓰므로 서버/클라이언트 출력 불일치가 생기지 않는다.
 - 첫 구독 시 `eth_accounts`(승인 창 없음)와 `eth_chainId`로 현재 상태를 읽고, MetaMask의 `accountsChanged`·`chainChanged` 이벤트로 변경을 반영한다.
 - 앱이 사용하는 체인은 `deployment.json`의 chainId다. 다르면 `ConnectButton`이 `wallet_switchEthereumChain`으로 전환을 요청한다. MetaMask에 해당 네트워크가 없으면(4902) 직접 추가하도록 안내한다. 브라우저는 RPC 주소를 모르므로(3.2) 네트워크 추가 요청은 하지 않는다.
+
+### 6.6 상품 상태 기록 표시 (U4, proposal.md FR-03)
+
+거래마다 판매 등록 당시의 상태 기록(6.3 JSON)을 내용과 사진으로 보여준다.
+
+| 화면 | 위치 |
+|---|---|
+| `/tokens/[tokenId]` | 거래 이력의 "판매 등록" 항목마다 그 거래의 기록 (여러 번 거래되면 거래마다) |
+| `/listings/[id]` | "상품 상태 기록" 섹션 (구매 전 확인용) |
+
+- 조회: 페이지가 `lib/data/ipfs/conditionRecords.ts`의 `getConditionRecord(cid)`를 호출해 **기다리지 않고** Promise를 넘기고, `components/condition/ConditionRecordView`(async Server Component)가 `<Suspense>` 안에서 기다린다. 게이트웨이가 느려도 이력·거래 정보는 먼저 표시된다. 같은 요청 안의 같은 CID는 `React.cache`로 한 번만 읽는다. 요청마다 게이트웨이를 다시 읽는다 (`use cache` 미사용, 6.1).
+- 기록은 믿지 않는다: 컨트랙트 `list`를 직접 호출하면 아무 문자열이나 CID로 등록할 수 있다 (D12 한계).
+  - 서버는 CID 형식(`isCid`)일 때만 게이트웨이에 요청한다 (`lib/ipfs/gateway.ts`, 15초·64KB). URL 같은 다른 값은 요청하지 않는다. 최초 판매 기록 작성 시의 `tokenURI`도 `ipfs://<CID>`일 때만 읽는다.
+  - `parseConditionRecord`(`lib/domain/conditionRecord.ts`)가 형식을 확인한다. `type` 없음 → 재판매 기록. 사진은 CID 형식 1~5개만 허용한다.
+  - `conditionRecordWarnings`: 기록의 NFT 번호·판매자가 거래와 다르거나, 최초 판매 기록인데 재판매 거래이면 경고를 함께 표시한다.
+  - `IpfsLink`는 게이트웨이 URL이 http(s)가 아니면(`javascript:` 등) 링크 없이 글자로만 표시한다.
+- 결과 종류: `ok`(내용 표시) / `invalid`(CID 아님·JSON 아님·형식 다름 → "형식을 읽을 수 없음") / `unavailable`(게이트웨이 연결 실패 → "새로고침" 안내). 어느 경우든 원본 기록 링크를 함께 둔다.
+- 사진은 게이트웨이 원본을 `<img loading="lazy">`로 표시하고 누르면 원본을 연다. 원격 이미지 최적화(`next/image` remotePatterns)는 쓰지 않는다.
 
 ## 7. 환경 변수와 비밀값
 

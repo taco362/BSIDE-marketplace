@@ -1,12 +1,26 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { AccountLabel } from "@/components/account/AccountLabel";
-import { IpfsLink } from "@/components/ui/IpfsLink";
+import { ConditionRecordFallback, ConditionRecordView } from "@/components/condition/ConditionRecordView";
 import { accountOf } from "@/lib/domain/account";
+import type { ConditionRecordResult } from "@/lib/domain/conditionRecord";
 import { CANCEL_REASON_LABELS, formatEth, formatTimestamp } from "@/lib/domain/format";
 import type { AccountDirectory, TokenHistory, TradeEvent } from "@/lib/domain/types";
 
-/** NFT별 플랫폼 거래 이력 (에스크로 이벤트 타임라인) */
-export function TradeTimeline({ history, accounts }: { history: TokenHistory; accounts: AccountDirectory }) {
+/** 상태 기록 CID → 조회 결과 (페이지가 만든다) */
+export type ConditionRecordMap = Record<string, Promise<ConditionRecordResult>>;
+
+/** NFT별 플랫폼 거래 이력 (에스크로 이벤트 타임라인). 판매 등록 항목에 그때의 상품 상태 기록을 함께 보인다 (U4) */
+export function TradeTimeline({
+  tokenId,
+  history,
+  accounts,
+  conditionRecords,
+}: {
+  tokenId: number;
+  history: TokenHistory;
+  accounts: AccountDirectory;
+  conditionRecords: ConditionRecordMap;
+}) {
   return (
     <div className="flex flex-col gap-3">
       {history.source === "listings" && (
@@ -27,6 +41,17 @@ export function TradeTimeline({ history, accounts }: { history: TokenHistory; ac
                 <span className="text-zinc-500"> · 거래 #{event.listingId}</span>
               </p>
               <div className="text-sm text-zinc-600 dark:text-zinc-400">{describe(event, accounts)}</div>
+              {event.kind === "Listed" && event.conditionCID in conditionRecords && (
+                <div className="mt-1 max-w-xl">
+                  <Suspense fallback={<ConditionRecordFallback />}>
+                    <ConditionRecordView
+                      cid={event.conditionCID}
+                      result={conditionRecords[event.conditionCID]}
+                      listing={{ tokenId, seller: event.seller, isPrimary: event.isPrimary }}
+                    />
+                  </Suspense>
+                </div>
+              )}
               <p className="text-xs text-zinc-500">
                 {event.timestamp !== null ? formatTimestamp(event.timestamp) : "시각 알 수 없음"}
                 {event.txHash && (
@@ -59,8 +84,6 @@ function describe(event: TradeEvent, accounts: AccountDirectory): ReactNode {
       return (
         <>
           {account(event.seller)} · {formatEth(event.price)} · {event.isPrimary ? "최초 판매" : "재판매"}
-          <br />
-          상태 기록 <IpfsLink uri={event.conditionCID} />
         </>
       );
     case "Purchased":

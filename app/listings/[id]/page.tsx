@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListingStatusBadge } from "@/components/listing/ListingStatusBadge";
 import { TokenSummary } from "@/components/token/TokenSummary";
+import { ConditionRecordFallback, ConditionRecordView } from "@/components/condition/ConditionRecordView";
 import { getMarketReader } from "@/lib/data";
+import { getConditionRecord } from "@/lib/data/ipfs/conditionRecords";
 import { formatEth } from "@/lib/domain/format";
 import { ListingActions } from "./_components/ListingActions";
 import { ListingInfo } from "./_components/ListingInfo";
@@ -25,6 +27,7 @@ async function ListingDetail({ params }: Pick<PageProps<"/listings/[id]">, "para
   const item = /^[1-9][0-9]*$/.test(id) ? await reader.getListing(Number(id)) : null;
   if (!item) notFound();
   const { listing, token } = item;
+  const conditionRecord = getConditionRecord(listing.conditionCID);
   const accounts = await reader.getAccounts([
     token.artist,
     listing.seller,
@@ -50,6 +53,16 @@ async function ListingDetail({ params }: Pick<PageProps<"/listings/[id]">, "para
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">거래 정보</h2>
         <ListingInfo listing={listing} artist={token.artist} accounts={accounts} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">상품 상태 기록</h2>
+        <p className="text-sm text-zinc-500">판매자가 이 판매를 등록할 때 남긴 기록이며, 등록 후에는 바뀌지 않습니다.</p>
+        <div className="max-w-xl">
+          <Suspense fallback={<ConditionRecordFallback />}>
+            <ConditionRecordView cid={listing.conditionCID} result={conditionRecord} listing={listing} />
+          </Suspense>
+        </div>
       </section>
 
       <section className="flex flex-col gap-3">

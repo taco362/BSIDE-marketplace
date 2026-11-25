@@ -55,7 +55,8 @@ export interface ResaleConditionRecord extends ConditionRecordBase, ConditionInp
  */
 export interface PrimaryConditionRecord extends ConditionRecordBase {
   type: "primary";
-  condition: typeof PRIMARY_CONDITION_TEXT;
+  /** 서버가 쓰는 값은 PRIMARY_CONDITION_TEXT */
+  condition: string;
   /** 판매 등록 시점 NFT의 메타데이터 URI */
   metadata: string;
 }

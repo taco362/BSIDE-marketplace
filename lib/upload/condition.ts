@@ -7,6 +7,7 @@ import "server-only";
  * 어느 쪽인지는 요청 값이 아니라 체인의 NFT 정보로 정한다 (BSideEscrow.list의 isPrimary 판정과 같음).
  * tokenId·seller·createdAt은 서명 확인을 통과한 값과 서버 시각으로 서버가 채운다.
  */
+import { cidFromIpfsUri } from "@/lib/domain/conditionRecord";
 import { isPrimarySale } from "@/lib/domain/policy";
 import type { Token } from "@/lib/domain/types";
 import {
@@ -74,17 +75,22 @@ async function buildPrimaryRecord(auth: UploadAuth, token: Token): Promise<Prima
   };
 }
 
-/** 메타데이터의 image가 "ipfs://<CID>"이면 [CID], 아니면(없음·http 주소 등) 빈 배열 */
+/**
+ * 메타데이터의 image가 "ipfs://<CID>"이면 [CID], 아니면 빈 배열.
+ * tokenURI가 "ipfs://<CID>"가 아니거나(http 주소 등) 메타데이터 형식이 맞지 않아도 빈 배열 (서버는 CID만 요청한다).
+ */
 async function representativeImages(tokenURI: string): Promise<string[]> {
+  const metadataCid = cidFromIpfsUri(tokenURI);
+  if (!metadataCid) return [];
   let metadata: unknown;
   try {
-    metadata = await fetchIpfsJson(tokenURI);
+    metadata = await fetchIpfsJson(metadataCid);
   } catch (error) {
     if (!(error instanceof GatewayError)) throw error;
+    if (error.kind === "format") return [];
     throw new UploadError(502, `NFT 메타데이터를 읽지 못해 상태 기록을 만들지 못했습니다. 잠시 후 다시 시도하세요. (${error.message})`);
   }
   const image = (metadata as { image?: unknown } | null)?.image;
-  if (typeof image !== "string" || !image.startsWith("ipfs://")) return [];
-  const cid = image.slice("ipfs://".length);
-  return isCid(cid) ? [cid] : [];
+  const imageCid = typeof image === "string" ? cidFromIpfsUri(image) : null;
+  return imageCid ? [imageCid] : [];
 }

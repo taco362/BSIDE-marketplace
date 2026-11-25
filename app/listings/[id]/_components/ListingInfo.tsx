@@ -1,11 +1,10 @@
 import { AccountLabel } from "@/components/account/AccountLabel";
 import { DetailItem, DetailList } from "@/components/ui/DetailList";
-import { IpfsLink } from "@/components/ui/IpfsLink";
 import { accountOf } from "@/lib/domain/account";
 import { formatTimestamp, isSameAddress } from "@/lib/domain/format";
 import type { AccountDirectory, Listing } from "@/lib/domain/types";
 
-/** 거래 정보: 구분, 당사자, 상태 기록, 시각 */
+/** 거래 정보: 구분, 당사자, 시각 (상품 상태 기록은 페이지의 별도 섹션) */
 export function ListingInfo({
   listing,
   artist,
@@ -28,9 +27,6 @@ export function ListingInfo({
       </DetailItem>
       <DetailItem label="구매자">
         {listing.buyer ? <AccountLabel account={accountOf(accounts, listing.buyer)} full /> : "—"}
-      </DetailItem>
-      <DetailItem label="상품 상태 기록">
-        <IpfsLink uri={listing.conditionCID} />
       </DetailItem>
       <DetailItem label="판매 등록">{formatTimestamp(listing.listedAt)}</DetailItem>
       {listing.lockedAt !== null && <DetailItem label="구매(대금 예치)">{formatTimestamp(listing.lockedAt)}</DetailItem>}
