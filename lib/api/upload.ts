@@ -3,6 +3,7 @@
  * - signUploadAuth: 업로드 확인 문장에 MetaMask로 서명 (가스비 없음, personal_sign)
  * - uploadImage: 사진 1장 → POST /api/ipfs/images → 사진 CID
  * - uploadCondition: 상태 정보 + 사진 CID → POST /api/ipfs/condition → 상태 기록 CID
+ * - uploadPrimaryCondition: 최초 판매는 입력 없이 같은 API → 서버가 작성한 상태 기록 CID
  * - uploadMetadata: 이름·설명 + 대표 이미지 CID → POST /api/ipfs/metadata → 메타데이터 CID
  * Pinata 키는 서버에만 있다. 브라우저는 우리 서버 API만 호출한다.
  */
@@ -82,20 +83,28 @@ export async function uploadMetadata(
   return readResult(await post("/api/ipfs/metadata", { body, headers: { "Content-Type": "application/json" } }));
 }
 
-export async function uploadCondition(
-  input: ConditionInput,
-  images: string[],
-  auth: SignedUploadAuth,
-): Promise<string> {
+/** 재판매 상태 기록 업로드: 상태 정보 + 사진 CID → 상태 기록 CID */
+export function uploadCondition(input: ConditionInput, images: string[], auth: SignedUploadAuth): Promise<string> {
+  return postCondition(auth, {
+    sealed: input.sealed,
+    condition: input.condition,
+    defects: input.defects,
+    images,
+  });
+}
+
+/** 최초 판매 상태 기록 업로드: 입력 없음, 서버가 대표 이미지로 작성 (D11) → 상태 기록 CID */
+export function uploadPrimaryCondition(auth: SignedUploadAuth): Promise<string> {
+  return postCondition(auth, {});
+}
+
+async function postCondition(auth: SignedUploadAuth, fields: Record<string, unknown>): Promise<string> {
   const body = JSON.stringify({
     tokenId: auth.tokenId,
     address: auth.address,
     issuedAt: auth.issuedAt,
     signature: auth.signature,
-    sealed: input.sealed,
-    condition: input.condition,
-    defects: input.defects,
-    images,
+    ...fields,
   });
   return readResult(await post("/api/ipfs/condition", { body, headers: { "Content-Type": "application/json" } }));
 }

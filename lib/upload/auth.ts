@@ -11,6 +11,7 @@ import { DEPLOYMENT } from "@/lib/contracts";
 import { getMarketReader } from "@/lib/data";
 import { accountOf } from "@/lib/domain/account";
 import { isSameAddress } from "@/lib/domain/format";
+import type { Token } from "@/lib/domain/types";
 import {
   UPLOAD_AUTH_MAX_AGE_SECONDS,
   UPLOAD_AUTH_MAX_SKEW_SECONDS,
@@ -80,7 +81,8 @@ function verifyFreshness(issuedAt: number, nowSeconds: number): void {
   }
 }
 
-async function verifyPermission(auth: UploadAuth): Promise<void> {
+/** condition 용도면 확인에 쓴 NFT 정보를, metadata 용도면 null을 돌려준다 */
+async function verifyPermission(auth: UploadAuth): Promise<Token | null> {
   const reader = getMarketReader();
   try {
     if (auth.purpose === "condition") {
@@ -90,12 +92,13 @@ async function verifyPermission(auth: UploadAuth): Promise<void> {
       if (!isSameAddress(token.owner, auth.address)) {
         throw new UploadError(403, "NFT 소유자만 상품 상태 기록을 올릴 수 있습니다.");
       }
-      return;
+      return token;
     }
     const accounts = await reader.getAccounts([auth.address]);
     if (!accountOf(accounts, auth.address).verifiedArtist) {
       throw new UploadError(403, "승인된 아티스트만 발행 메타데이터를 올릴 수 있습니다.");
     }
+    return null;
   } catch (error) {
     if (error instanceof UploadError) throw error;
     console.error("[upload] 권한 확인 중 블록체인 조회 실패", error);
@@ -103,9 +106,15 @@ async function verifyPermission(auth: UploadAuth): Promise<void> {
   }
 }
 
-/** 서명 → 유효 시간 → 권한 순서로 확인한다. 통과하지 못하면 UploadError */
-export async function verifyUploadAuth(auth: UploadAuth, nowSeconds = Math.floor(Date.now() / 1000)): Promise<void> {
+/**
+ * 서명 → 유효 시간 → 권한 순서로 확인한다. 통과하지 못하면 UploadError.
+ * condition 용도면 권한 확인에 쓴 NFT 정보를 돌려준다 (최초 판매 판단에 사용).
+ */
+export async function verifyUploadAuth(
+  auth: UploadAuth,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<Token | null> {
   verifySignature(auth);
   verifyFreshness(auth.issuedAt, nowSeconds);
-  await verifyPermission(auth);
+  return verifyPermission(auth);
 }

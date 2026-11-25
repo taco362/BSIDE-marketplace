@@ -103,6 +103,7 @@ b-side/
 │  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer (client)
 │  ├─ api/upload.ts               # 업로드 확인 서명, /api/ipfs/* 호출 (client, 6.3)
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
+│  ├─ ipfs/gateway.ts             # 게이트웨이에서 IPFS JSON 읽기 (server-only, 최초 판매 상태 기록)
 │  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts (server-only, 6.3)
 │  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소(Pinata 공개 게이트웨이), CID → URL 변환
 ├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
@@ -477,7 +478,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 |---|---|---|
 | `/admin` | 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`이 아니면 경고만 표시 |
 | `/mint` | 업로드 확인 서명 → 대표 이미지·메타데이터 업로드(6.3) → 발행 `mint` (아티스트) | 승인된 아티스트 목록에 없으면 경고만 표시 |
-| `/sell/[tokenId]` | 업로드 확인 서명 → 사진·상태 기록 업로드(6.3) → `approve` → `list` (소유자) | 소유자일 때. 가격은 `listingPriceRule`: 최초 판매면 최초 판매가 고정, 정가 보호형 재판매면 상한 안내 |
+| `/sell/[tokenId]` | 업로드 확인 서명 → 사진·상태 기록 업로드(6.3, 최초 판매는 서버 자동 작성) → `approve` → `list` (소유자) | 소유자일 때. 가격은 `listingPriceRule`: 최초 판매면 최초 판매가 고정, 정가 보호형 재판매면 상한 안내 |
 | `/listings/[id]` | LISTED: 구매 `buy`(판매자 외) / 등록 취소 `cancelListing`(판매자). LOCKED: 수령 승인 `confirmReceipt`(구매자) / 정산 청구 `claimAfterTimeout`(판매자, 기한 전에는 비활성) | 상태·역할별. DISPUTED·종료 상태는 안내 문구만 |
 | `/my` | 출금 `withdraw` (본인) | 조회 계정과 연결 계정이 같을 때 |
 
@@ -528,9 +529,10 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - 응답: 성공 `200 { cid }`. 실패 `{ error }`와 상태 코드 400(입력 형식), 401(서명·유효 시간), 403(권한), 413(크기), 415(형식), 502(Pinata 실패), 500(서버 설정 누락). 오류 문구에는 비밀값·원본 오류를 넣지 않고 원본은 서버 로그에만 남긴다.
 - 사진 개수(1~5장)는 사진을 묶는 상태 기록 JSON 단계(U2)에서 확인한다. 사진만 올리고 판매 등록을 그만두면 사용되지 않는 사진이 Pinata에 남는다 (MVP 허용).
 
-상태 기록 JSON (U2, D11·D12). `tokenId`·`seller`·`createdAt`·`images`는 서버가 채운다:
+상태 기록 JSON (U2, D11·D12). `type`·`tokenId`·`seller`·`createdAt`은 서버가 채운다. 재판매(`type: "resale"`):
 ```json
 {
+  "type": "resale",
   "tokenId": 1,
   "seller": "0x...",
   "sealed": true,
@@ -541,6 +543,23 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 }
 ```
 - 사진 CID 목록은 브라우저가 ②에서 받은 값을 보낸다. 서버는 형식과 개수(1~5)만 확인하며, 그 사진을 같은 사용자가 올렸는지는 확인하지 않는다 (DB 없음).
+- `type`이 없는 기록(이 필드를 넣기 전에 올린 로컬 테스트 기록)은 재판매 기록으로 읽는다.
+
+최초 판매 상태 기록 (`type: "primary"`, D11 최초 판매). 판매자 입력 없이 서버가 작성한다:
+```json
+{
+  "type": "primary",
+  "tokenId": 2,
+  "seller": "0x...(아티스트)",
+  "condition": "아티스트 최초 판매 상품",
+  "metadata": "ipfs://<판매 등록 시점의 메타데이터 CID>",
+  "images": ["<메타데이터 image의 CID>"],
+  "createdAt": "ISO 8601"
+}
+```
+- 같은 `POST /api/ipfs/condition`을 쓴다. 최초 판매인지는 요청 값이 아니라 체인의 NFT 정보로 서버가 정한다: 서명자가 아티스트이고 최초 판매 자격이 남아 있으면(`isPrimarySale`, `BSideEscrow.list`의 `isPrimary` 판정과 같음) 요청의 상태·사진 값은 무시하고 위 기록을 만든다. 그 외에는 재판매 기록이며 입력이 필수다.
+- 대표 이미지는 서버가 `tokenURI`의 메타데이터 JSON을 공개 게이트웨이에서 읽어(`lib/ipfs/gateway.ts`, 15초·64KB 제한) `image`가 `ipfs://<CID>`이면 그 CID를 쓴다. `image`가 없거나 IPFS 주소가 아니면 `images`는 빈 배열이다. 게이트웨이를 읽지 못하면 502로 거부한다 (다시 시도).
+- 판매 등록 화면: 최초 판매는 상태·사진 입력 칸 대신 안내 문구를 보이고, 업로드 확인 서명 → 최초 판매 상태 기록 작성 → approve → list 순서로 진행한다. 서명은 재판매와 같이 필요하다 (소유자 확인, 남용 방지).
 - 한계 (proposal.md D12): 화면을 거치지 않고 컨트랙트 `list`를 직접 호출하면 임의의 CID로 등록할 수 있다.
 
 발행 메타데이터 JSON (U3, D13): `{ "name", "description", "image": "ipfs://<대표 이미지 CID>" }`. 대표 이미지는 1장, 사진과 같은 형식·용량 제한.
@@ -559,7 +578,8 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 | `lib/upload/image.ts` | 바이트 시그니처로 사진 형식 판별, 크기 확인 (server-only) |
 | `lib/upload/errors.ts` | `UploadError(status, 안내 문구)` (server-only) |
 | `app/api/ipfs/images/route.ts` | 요청 해석 → 확인 → 업로드 → 응답만 한다 |
-| `lib/upload/condition.ts` | 상태 기록 입력 확인과 JSON 작성 (tokenId·seller·createdAt은 서버 값) (server-only, U2) |
+| `lib/upload/condition.ts` | 상태 기록 입력 확인과 JSON 작성 (tokenId·seller·createdAt은 서버 값). 최초 판매면 대표 이미지로 자동 작성 (server-only, U2) |
+| `lib/ipfs/gateway.ts` | 공개 게이트웨이에서 IPFS JSON 읽기 (시간·크기 제한) (server-only) |
 | `lib/upload/metadata.ts`, `app/api/ipfs/metadata/route.ts` | 발행 메타데이터 입력 확인·JSON 작성·업로드 (U3) |
 | `app/api/ipfs/condition/route.ts` | JSON 요청(16KB 이하) → 서명·권한 확인(용도는 항상 `condition`) → 기록 작성 → 업로드 (U2) |
 | `lib/api/upload.ts` | 브라우저: 업로드 확인 서명(`signer.signMessage`), 사진·상태 기록 업로드 요청 (U2) |

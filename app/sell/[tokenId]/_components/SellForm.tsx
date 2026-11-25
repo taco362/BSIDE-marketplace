@@ -7,7 +7,13 @@ import { FormField, INPUT_CLASS, SubmitButton } from "@/components/ui/FormField"
 import { PhotoPicker, type SelectedPhoto } from "@/components/upload/PhotoPicker";
 import { NetworkGuard } from "@/components/wallet/NetworkGuard";
 import { useTx, type TxStep } from "@/hooks/useTx";
-import { signUploadAuth, uploadCondition, uploadImage, type SignedUploadAuth } from "@/lib/api/upload";
+import {
+  signUploadAuth,
+  uploadCondition,
+  uploadImage,
+  uploadPrimaryCondition,
+  type SignedUploadAuth,
+} from "@/lib/api/upload";
 import { formatEth, isSameAddress, parseEth } from "@/lib/domain/format";
 import { checkListingPrice, formatBps, listingPriceRule, type ListingPriceRule } from "@/lib/domain/policy";
 import type { Token } from "@/lib/domain/types";
@@ -24,6 +30,7 @@ import { ConditionFields } from "./ConditionFields";
 /**
  * 판매 등록 (architecture.md 6.2, 6.3)
  * 업로드 확인 서명 → 사진 업로드 → 상태 기록 업로드(서버가 tokenId·판매자·시각을 채움) → NFT 사용 승인(approve) → 판매 등록(list)
+ * 최초 판매는 사진·상태 입력 없이 서명 → 서버가 상태 기록 작성(대표 이미지 사용, D11) → approve → list
  * 가격 규칙은 연결된 계정(판매자) 기준으로 미리 안내하고, 최종 검증은 컨트랙트가 한다.
  */
 export function SellForm({ token }: { token: Token }) {
@@ -84,21 +91,34 @@ function Form({
   // 업로드는 끝났는데 승인·등록 서명을 거부한 경우, 입력이 같으면 다시 올리지 않고 같은 상태 기록 CID를 쓴다
   const uploaded = useRef<{ key: string; cid: string } | null>(null);
 
+  // 최초 판매는 상태·사진을 입력하지 않고 서버가 기록을 작성한다 (D11)
+  const primary = rule.kind === "primary";
   const price = rule.kind === "primary" ? rule.price : parseEth(priceText);
   const priceError =
     price === null ? "ETH 금액을 숫자로 입력하세요 (예: 0.05)." : checkListingPrice(rule, price);
-  const conditionError = checkConditionInput(condition);
-  const photoError = checkImageCount(photos.length);
+  const conditionError = primary ? null : checkConditionInput(condition);
+  const photoError = primary ? null : checkImageCount(photos.length);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
     if (priceError || conditionError || photoError || price === null) return;
 
-    const inputKey = JSON.stringify([condition, photos.map((p) => p.id)]);
+    const inputKey = primary ? "primary" : JSON.stringify([condition, photos.map((p) => p.id)]);
     let conditionCid = uploaded.current?.key === inputKey ? uploaded.current.cid : null;
     let auth: SignedUploadAuth | null = null;
     const imageCids: string[] = [];
+
+    const photoSteps = (primary ? [] : photos).map(
+      (photo, i): TxStep => ({
+        label: `사진 업로드 ${i + 1}/${photos.length}`,
+        kind: "work",
+        send: async () => {
+          imageCids.push(await uploadImage(photo.file, auth as SignedUploadAuth));
+          return null;
+        },
+      }),
+    );
 
     const uploadSteps: TxStep[] = conditionCid
       ? []
@@ -110,21 +130,15 @@ function Form({
               return null;
             },
           },
-          ...photos.map(
-            (photo, i): TxStep => ({
-              label: `사진 업로드 ${i + 1}/${photos.length}`,
-              kind: "work",
-              send: async () => {
-                imageCids.push(await uploadImage(photo.file, auth as SignedUploadAuth));
-                return null;
-              },
-            }),
-          ),
+          ...photoSteps,
           {
-            label: "상품 상태 기록 업로드",
+            label: primary ? "최초 판매 상태 기록 작성" : "상품 상태 기록 업로드",
             kind: "work",
             send: async () => {
-              conditionCid = await uploadCondition(condition, imageCids, auth as SignedUploadAuth);
+              const signed = auth as SignedUploadAuth;
+              conditionCid = primary
+                ? await uploadPrimaryCondition(signed)
+                : await uploadCondition(condition, imageCids, signed);
               uploaded.current = { key: inputKey, cid: conditionCid };
               return null;
             },
@@ -170,29 +184,41 @@ function Form({
         </FormField>
       )}
 
-      <ConditionFields
-        value={condition}
-        onChange={setCondition}
-        error={submitted ? conditionError : null}
-        disabled={tx.busy}
-      />
+      {primary ? (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">상품 상태</span>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            최초 판매는 상태·사진을 따로 입력하지 않습니다. &quot;아티스트 최초 판매 상품&quot;으로 기록되고, 사진은 발행
+            때 올린 대표 이미지를 씁니다.
+          </p>
+        </div>
+      ) : (
+        <>
+          <ConditionFields
+            value={condition}
+            onChange={setCondition}
+            error={submitted ? conditionError : null}
+            disabled={tx.busy}
+          />
 
-      <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">상품 사진</span>
-        <PhotoPicker
-          id="condition-photos"
-          value={photos}
-          onChange={setPhotos}
-          max={MAX_CONDITION_IMAGES}
-          disabled={tx.busy}
-        />
-        {submitted && photoError && <p className="text-xs text-red-600">{photoError}</p>}
-      </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">상품 사진</span>
+            <PhotoPicker
+              id="condition-photos"
+              value={photos}
+              onChange={setPhotos}
+              max={MAX_CONDITION_IMAGES}
+              disabled={tx.busy}
+            />
+            {submitted && photoError && <p className="text-xs text-red-600">{photoError}</p>}
+          </div>
+        </>
+      )}
 
       <p className="text-xs text-zinc-500">
-        상태 정보와 사진은 이 판매 건의 기록으로 IPFS에 올라가며, 등록 후에는 바꿀 수 없습니다. 등록하면 NFT가 에스크로
-        컨트랙트에 보관됩니다. MetaMask 요청은 최대 3번입니다 (업로드 확인 서명, NFT 사용 승인, 판매 등록). 구매 전에는
-        언제든 등록을 취소할 수 있습니다.
+        {primary ? "상태 기록은" : "상태 정보와 사진은"} 이 판매 건의 기록으로 IPFS에 올라가며, 등록 후에는 바꿀 수
+        없습니다. 등록하면 NFT가 에스크로 컨트랙트에 보관됩니다. MetaMask 요청은 최대 3번입니다 (업로드 확인 서명, NFT 사용
+        승인, 판매 등록). 구매 전에는 언제든 등록을 취소할 수 있습니다.
       </p>
       <SubmitButton disabled={tx.busy}>{tx.busy ? "처리 중…" : "판매 등록"}</SubmitButton>
       <TxStatus state={tx} />

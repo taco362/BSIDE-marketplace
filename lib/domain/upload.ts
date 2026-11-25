@@ -35,13 +35,36 @@ export interface ConditionInput {
   defects: string;
 }
 
-/** IPFS에 올라가는 상태 기록 JSON (architecture.md 6.3) */
-export interface ConditionRecord extends ConditionInput {
+/** 상태 기록 공통 필드. 모두 서버가 채운다 (D12) */
+interface ConditionRecordBase {
   tokenId: number;
   seller: string;
+  /** 사진 CID 목록 */
   images: string[];
   createdAt: string;
 }
+
+/** 재판매 상태 기록: 판매자가 상태·사진을 입력 (D11). type이 없는 기록(변경 전에 올린 것)도 재판매 기록이다 */
+export interface ResaleConditionRecord extends ConditionRecordBase, ConditionInput {
+  type: "resale";
+}
+
+/**
+ * 최초 판매 상태 기록: 입력 없이 서버가 작성 (D11 최초 판매)
+ * images는 발행 메타데이터의 대표 이미지 (메타데이터에 IPFS 이미지가 없으면 빈 배열)
+ */
+export interface PrimaryConditionRecord extends ConditionRecordBase {
+  type: "primary";
+  condition: typeof PRIMARY_CONDITION_TEXT;
+  /** 판매 등록 시점 NFT의 메타데이터 URI */
+  metadata: string;
+}
+
+/** IPFS에 올라가는 상태 기록 JSON (architecture.md 6.3) */
+export type ConditionRecord = ResaleConditionRecord | PrimaryConditionRecord;
+
+/** 최초 판매 상태 기록의 상태 설명 */
+export const PRIMARY_CONDITION_TEXT = "아티스트 최초 판매 상품";
 
 /** 발행 메타데이터 글자 수 상한 (구현 상한, 정책 값 아님) */
 export const MAX_METADATA_NAME = 100;

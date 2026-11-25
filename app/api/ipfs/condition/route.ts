@@ -1,7 +1,8 @@
 /**
  * 상품 상태 기록 업로드 (docs/architecture.md 6.3, proposal.md D11·D12)
- * JSON: tokenId, address, issuedAt, signature, sealed, condition, defects, images(사진 CID 1~5개)
+ * JSON: tokenId, address, issuedAt, signature + (재판매만) sealed, condition, defects, images(사진 CID 1~5개)
  * 서버가 tokenId·seller·createdAt을 채운 상태 기록 JSON을 올리고 { cid }를 돌려준다. 이 CID로 list를 호출한다.
+ * 최초 판매(D1·D9)면 상태 입력을 쓰지 않고 대표 이미지로 "아티스트 최초 판매" 기록을 작성한다 (D11).
  */
 import { uploadJson } from "@/lib/ipfs/pinata";
 import { readAuthFields, verifyUploadAuth } from "@/lib/upload/auth";
@@ -25,9 +26,11 @@ export async function POST(request: Request) {
 
     // 상태 기록은 condition 용도로만 받는다 (요청의 purpose 값은 쓰지 않음)
     const auth = readAuthFields((key) => (key === "purpose" ? "condition" : body[key]));
-    await verifyUploadAuth(auth);
+    const token = await verifyUploadAuth(auth);
+    if (!token) throw new UploadError(500, "NFT 정보를 확인하지 못했습니다.");
 
-    const record = buildConditionRecord(body, auth);
+    // 최초 판매면 입력값을 쓰지 않고 서버가 기록을 작성한다 (D11)
+    const record = await buildConditionRecord(body, auth, token);
     const cid = await uploadJson(record, `condition-token${record.tokenId}-${Date.now()}.json`);
     return Response.json({ cid });
   } catch (error) {

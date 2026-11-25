@@ -32,11 +32,16 @@ export type ListingPriceRule =
   | { kind: "cap"; cap: bigint }
   | { kind: "free" };
 
+/** 이 판매자가 지금 등록하면 최초 판매인지 (BSideEscrow.list의 isPrimary 판정과 같다, D1·D9) */
+export function isPrimarySale(token: Pick<Token, "artist" | "primaryEnded">, seller: string): boolean {
+  return isSameAddress(seller, token.artist) && !token.primaryEnded;
+}
+
 export function listingPriceRule(
   token: Pick<Token, "artist" | "primaryEnded" | "policy" | "policyBps" | "initialPrice">,
   seller: string,
 ): ListingPriceRule {
-  if (isSameAddress(seller, token.artist) && !token.primaryEnded) return { kind: "primary", price: token.initialPrice };
+  if (isPrimarySale(token, seller)) return { kind: "primary", price: token.initialPrice };
   const cap = resaleCap(token);
   return cap === null ? { kind: "free" } : { kind: "cap", cap };
 }
