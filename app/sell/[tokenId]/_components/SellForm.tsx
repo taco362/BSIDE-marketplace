@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Suspense, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { TxStatus } from "@/components/tx/TxStatus";
 import { FormField, INPUT_CLASS, SubmitButton } from "@/components/ui/FormField";
@@ -14,6 +14,7 @@ import {
   uploadPrimaryCondition,
   type SignedUploadAuth,
 } from "@/lib/api/upload";
+import type { PriorCondition } from "@/lib/domain/conditionHistory";
 import { formatEth, isSameAddress, parseEth } from "@/lib/domain/format";
 import { checkListingPrice, formatBps, listingPriceRule, type ListingPriceRule } from "@/lib/domain/policy";
 import type { Token } from "@/lib/domain/types";
@@ -26,6 +27,7 @@ import {
 import { list, listedListingId } from "@/lib/tx/escrow";
 import { approveEscrowIfNeeded } from "@/lib/tx/nft";
 import { ConditionFields } from "./ConditionFields";
+import { PriorConditionNotice } from "./PriorConditionNotice";
 
 /**
  * 판매 등록 (architecture.md 6.2, 6.3)
@@ -33,7 +35,14 @@ import { ConditionFields } from "./ConditionFields";
  * 최초 판매는 사진·상태 입력 없이 서명 → 서버가 상태 기록 작성(대표 이미지 사용, D11) → approve → list
  * 가격 규칙은 연결된 계정(판매자) 기준으로 미리 안내하고, 최종 검증은 컨트랙트가 한다.
  */
-export function SellForm({ token }: { token: Token }) {
+export function SellForm({
+  token,
+  priorConditions,
+}: {
+  token: Token;
+  /** 이전 완료 거래의 상태 기록 (모순 안내용, 6.7 A1). 서버가 기다리지 않고 넘긴다 */
+  priorConditions: Promise<PriorCondition[]>;
+}) {
   // 등록 후 router.refresh()로 NFT가 에스크로 보관 상태가 되어도 결과를 계속 보여준다.
   // Cache Components는 방문했던 화면의 상태를 보존하므로(<Activity>), 완료 표시는 현재 서버 상태(에스크로 보관 중)일 때만 쓴다.
   // 등록 취소 후 이 화면으로 돌아오면 다시 폼이 보인다.
@@ -64,6 +73,7 @@ export function SellForm({ token }: { token: Token }) {
             token={token}
             rule={listingPriceRule(token, account)}
             sellerIsArtist={isSameAddress(account, token.artist)}
+            priorConditions={priorConditions}
             onListed={setListingId}
           />
         );
@@ -76,11 +86,13 @@ function Form({
   token,
   rule,
   sellerIsArtist,
+  priorConditions,
   onListed,
 }: {
   token: Token;
   rule: ListingPriceRule;
   sellerIsArtist: boolean;
+  priorConditions: Promise<PriorCondition[]>;
   onListed: (listingId: number) => void;
 }) {
   const tx = useTx();
@@ -200,6 +212,9 @@ function Form({
             error={submitted ? conditionError : null}
             disabled={tx.busy}
           />
+          <Suspense fallback={null}>
+            <PriorConditionNotice value={condition} prior={priorConditions} />
+          </Suspense>
 
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">상품 사진</span>

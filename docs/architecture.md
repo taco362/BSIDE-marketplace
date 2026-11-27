@@ -60,7 +60,8 @@ b-side/
 │  ├─ sell/[tokenId]/             # 판매 등록 (page.tsx + _components/SellForm, ConditionFields). NFT 선택은 my의 보유 NFT 목록에서
 │  ├─ my/                         # 출금, 보유 NFT, 판매·구매 거래 (?account=, 6.5) (+ _components/AccountSync, WithdrawPanel, MyTokenList, MyListingsTable)
 │  ├─ admin/                      # 아티스트 등록·활동명 변경·회수 (+ _components/RegisterArtistForm, ArtistTable, RevokeArtistButton). 분쟁 중재는 Phase 2
-│  └─ api/ipfs/                   # Pinata 업로드 (Phase 2, 6.3): images/route.ts(U1), condition/route.ts(U2), metadata/route.ts(U3)
+│  ├─ api/ipfs/                   # Pinata 업로드 (Phase 2, 6.3): images/route.ts(U1), condition/route.ts(U2), metadata/route.ts(U3)
+│  └─ api/ai/                     # AI 보조 (D14, 6.7): condition-draft/route.ts(A2), token-summary/route.ts(A3)
 ├─ components/                    # 여러 페이지에서 재사용하는 UI
 │  ├─ ui/                         # 도메인과 무관한 기본 요소 (DetailList, IpfsLink, CopyButton, FormField)
 │  ├─ account/                    # AccountLabel (활동명·인증 표시·축약/전체 주소, D7)
@@ -69,7 +70,7 @@ b-side/
 │  ├─ token/                      # TokenSummary, PolicyBadge
 │  ├─ tx/                         # TxStatus (서명 대기·처리 중·블록 포함 대기·성공·실패 표시), TxButton (입력 없는 단일 동작 버튼)
 │  ├─ upload/                     # PhotoPicker (사진 선택·미리보기, 6.3)
-│  └─ condition/                  # ConditionRecordView (거래별 상품 상태 기록 표시, 6.6)
+│  └─ condition/                  # ConditionRecordView (거래별 상품 상태 기록 표시, 6.6), ConditionHistoryWarnings (모순 경고, 6.7)
 ├─ hooks/                         # 클라이언트 상태 훅
 │  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (모듈 단위 저장소 + useSyncExternalStore, 6.5)
 │  ├─ useTx.ts                    # 트랜잭션 단계 실행·진행 상태·오류 문구, 성공 시 router.refresh() (6.2)
@@ -86,7 +87,9 @@ b-side/
 │  │  ├─ account.ts               # 계정 표시 정보 찾기, 표시 대상 주소 모으기
 │  │  ├─ validation.ts            # 거래 화면 입력 형식 확인 (URI·CID·주소·활동명·정책 수치)
 │  │  ├─ upload.ts                # 업로드 제한 값, 업로드 확인 서명 문장, 상태 기록 타입 (6.3)
-│  │  └─ conditionRecord.ts       # 상태 기록 형식 확인, 거래와 어긋남 경고 (6.6)
+│  │  ├─ conditionRecord.ts       # 상태 기록 형식 확인, 거래와 어긋남 경고 (6.6)
+│  │  ├─ conditionHistory.ts      # 이전 완료 거래 기록과의 모순 경고 (6.7, A1)
+│  │  └─ historyFacts.ts          # AI 이력 요약에 넘길 사실 목록 계산 (6.7, A3)
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
 │  │  ├─ chain/provider.ts        # 서버 조회용 JsonRpcProvider (server-only, RPC_URL 사용)
@@ -108,6 +111,8 @@ b-side/
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
 │  ├─ ipfs/gateway.ts             # 게이트웨이에서 CID의 JSON 읽기 (server-only, 최초 판매 상태 기록·6.6 표시)
 │  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts (server-only, 6.3)
+│  ├─ ai/                         # AI 호출: client.ts, conditionDraft.ts(A2), tokenSummary.ts(A3) (server-only, 6.7)
+│  ├─ api/ai.ts                   # 브라우저: AI 초안·요약 요청 (client, 6.7)
 │  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소(Pinata 공개 게이트웨이), CID → URL 변환
 ├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
 │  ├─ hardhat.config.ts         # solc 0.8.28, sepolia 네트워크 (configVariable)
@@ -639,12 +644,58 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - 결과 종류: `ok`(내용 표시) / `invalid`(CID 아님·JSON 아님·형식 다름 → "형식을 읽을 수 없음") / `unavailable`(게이트웨이 연결 실패 → "새로고침" 안내). 어느 경우든 원본 기록 링크를 함께 둔다.
 - 사진은 게이트웨이 원본을 `<img loading="lazy">`로 표시하고 누르면 원본을 연다. 원격 이미지 최적화(`next/image` remotePatterns)는 쓰지 않는다.
 
+### 6.7 AI 보조 기능 (proposal.md D14)
+
+원칙:
+- 컨트랙트는 변경하지 않는다. AI 결과는 화면 표시·입력 초안에만 쓰고, 가격 규칙·정산·분쟁 판정에는 쓰지 않는다.
+- 확실한 모순은 AI가 아니라 규칙 함수(`lib/domain/conditionHistory.ts`)로 판정한다. AI는 같은 입력에도 결과가 달라질 수 있기 때문이다.
+- AI 호출은 서버(`lib/ai/*`, server-only)에서만 하고, API 키(`ANTHROPIC_API_KEY`)는 서버 전용 환경 변수로 둔다 (7장).
+
+#### A1. 상태 기록 모순 경고 (규칙 기반)
+
+비교 대상 (`priorCompletedListings`, `toPriorConditions`):
+- 같은 토큰에서 **현재 거래보다 거래 ID가 작고 COMPLETED된 거래**의 상태 기록만 쓴다. 그 상태로 거래가 확정된 기록이기 때문이다. 취소된 거래, 진행 중인 거래는 쓰지 않는다.
+- 그중 `ok` 상태의 재판매 기록이고, 기록의 NFT 번호와 판매자가 그 거래와 맞는 것(`conditionRecordWarnings`가 빈 목록)만 쓴다. 최초 판매 기록(개봉 여부 없음), 읽지 못한 기록, 형식이 다른 기록은 비교에서 빠진다.
+
+규칙 (`conditionHistoryWarnings(current, prior)`, `current`는 `{ sealed, defects }`):
+
+| 수준 | 조건 | 문구 (요지) |
+|---|---|---|
+| 강한 경고 | 이전 기록 중 하나라도 개봉(`sealed: false`)인데 현재 미개봉 | 이전 거래 #N에서는 "개봉"이었는데 이번에는 "미개봉" |
+| 주의 | 직전(가장 최근) 기록의 하자가 "없음"이 아닌데 현재 하자가 "없음" | 직전 거래 #N의 하자("…")가 이번에는 "없음" |
+
+- 하자 소멸은 수리 등 정상적인 이유가 있을 수 있어 "주의" 수준으로 둔다. 개봉 → 미개봉은 실물로는 일어날 수 없는 변화라서 "강한 경고"로 둔다.
+- 문구는 단정하지 않는다("이전 거래 기록과 다릅니다. 구매 전 판매자에게 확인하세요").
+
+표시:
+
+| 화면 | 위치 | 현재 기록 |
+|---|---|---|
+| `/listings/[id]` | "거래하기" 섹션 위 (구매 버튼 근처) | 이 거래의 상태 기록 |
+| `/tokens/[tokenId]` | 거래 이력의 "판매 등록" 항목마다 상태 기록 아래 | 그 거래의 상태 기록 |
+| `/sell/[tokenId]` | 상태 입력 칸 아래 (판매자 안내, 등록은 막지 않음) | 판매자가 지금 입력 중인 값 (하자 빈칸 = "없음") |
+
+- 조회: `lib/data/ipfs/conditionRecords.ts`의 `getPriorConditions(listings, beforeListingId)`가 비교 대상 기록을 `getConditionRecord`(React.cache)로 읽는다. 페이지는 기다리지 않고 Promise를 넘기며, `components/condition/ConditionHistoryWarnings`(async Server Component)가 `<Suspense>` 안에서 기다린다. 판매 등록 화면은 클라이언트 컴포넌트가 `use()`로 기다린다.
+- 한계: 플랫폼 밖 거래나 화면을 거치지 않은 등록은 비교할 기록이 없다. 비교 대상 기록을 게이트웨이에서 읽지 못하면 그 기록은 빠지므로 경고가 나오지 않을 수 있다.
+
+#### A2. AI 상태 기록 작성 보조 (구현 예정)
+
+- `POST /api/ai/condition-draft`: 업로드 확인 서명(용도 `condition`, 6.3)과 현재 소유자 확인, 사진 형식·용량 검사(`lib/upload/image.ts`)를 재사용한다. 사진은 Pinata에 올리지 않고 AI에만 보낸다. 최초 판매면 거부한다 (입력하지 않으므로, D11).
+- `lib/ai/conditionDraft.ts`: 사진 → `{ sealed, condition, defects }` 초안을 만든다. 형식을 고정한 출력을 `checkConditionInput`으로 확인한다. 사진 속 글자는 지시로 따르지 않는다.
+- 재판매 상태 기록에 선택 필드 `aiAssisted: true`를 추가한다. 판매자가 초안을 받아 등록했다고 브라우저가 알리는 값(자기 신고)이며, 서버는 초안 사용 여부를 증명할 수 없다 (DB 없음). 필드가 없는 기존 기록은 false로 읽는다.
+
+#### A3. AI 거래 이력 요약 (구현 예정)
+
+- `lib/domain/historyFacts.ts`가 거래 횟수·가격·상태·A1 경고를 사실 목록으로 계산하고, `lib/ai/tokenSummary.ts`는 그 목록만으로 문장을 쓴다. 사실 목록에 없는 숫자나 판단은 쓰지 않게 한다.
+- `POST /api/ai/token-summary { tokenId }`: 서버가 데이터를 직접 다시 읽는다. 조회 기능이므로 서명은 받지 않는다. 비용을 줄이기 위해 버튼을 눌렀을 때만 호출하고, 같은 서버 인스턴스 안에서 메모리 캐시를 둔다 (인스턴스마다 따로라서 완전하지 않음).
+
 ## 7. 환경 변수와 비밀값
 
 | 파일 | 변수 | 용도 | 노출 범위 |
 |---|---|---|---|
 | `.env.local` | `RPC_URL` | 서버 조회용 RPC (개발: 로컬 Hardhat 노드, 시연: 공개 RPC `ethereum-sepolia-rpc.publicnode.com`) | 서버 전용 |
 | `.env.local` | `PINATA_JWT` | IPFS 업로드 (Phase 2) | 서버 전용 |
+| `.env.local` | `ANTHROPIC_API_KEY` | AI 보조 기능 (6.7, A2부터 사용) | 서버 전용 |
 | Hardhat keystore (`contracts/`) | `SEPOLIA_PRIVATE_KEY`, `SEPOLIA_RPC_URL` | 컨트랙트 배포 | 로컬 전용 (암호화 저장) |
 
 - `NEXT_PUBLIC_` 접두사가 붙은 변수만 브라우저 번들에 포함된다. 비밀값에는 붙이지 않으며, 현재 계획에는 `NEXT_PUBLIC_` 변수가 없다 (3.2).

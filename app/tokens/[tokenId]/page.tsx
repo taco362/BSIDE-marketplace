@@ -2,11 +2,11 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { TokenSummary } from "@/components/token/TokenSummary";
 import { getMarketReader } from "@/lib/data";
-import { getConditionRecord } from "@/lib/data/ipfs/conditionRecords";
+import { getConditionRecord, getPriorConditions } from "@/lib/data/ipfs/conditionRecords";
 import { tradeEventAddresses } from "@/lib/domain/account";
 import { primarySaleState } from "@/lib/domain/policy";
 import { TokenListingsTable } from "./_components/TokenListingsTable";
-import { TradeTimeline, type ConditionRecordMap } from "./_components/TradeTimeline";
+import { TradeTimeline, type ConditionRecordMap, type PriorConditionMap } from "./_components/TradeTimeline";
 
 /** NFT 정보, 재판매 정책, 플랫폼 거래 이력 (판매 등록마다 그때의 상품 상태 기록 표시, U4) */
 export default function TokenPage({ params }: PageProps<"/tokens/[tokenId]">) {
@@ -32,9 +32,13 @@ async function TokenDetail({ params }: Pick<PageProps<"/tokens/[tokenId]">, "par
   ]);
   if (!token) notFound();
   // 판매 등록마다 상태 기록을 읽기 시작만 한다. 기록마다 <Suspense>로 따로 표시되어 게이트웨이가 느려도 이력은 먼저 보인다
+  // 모순 경고(6.7 A1)의 비교 대상도 거래마다 기다리지 않고 넘긴다. 같은 CID는 React.cache로 한 번만 읽는다
   const conditionRecords: ConditionRecordMap = {};
+  const priorConditions: PriorConditionMap = {};
   for (const event of history.events) {
-    if (event.kind === "Listed") conditionRecords[event.conditionCID] ??= getConditionRecord(event.conditionCID);
+    if (event.kind !== "Listed") continue;
+    conditionRecords[event.conditionCID] ??= getConditionRecord(event.conditionCID);
+    priorConditions[event.listingId] ??= getPriorConditions(listings, event.listingId);
   }
   const accounts = await reader.getAccounts([
     token.artist,
@@ -63,6 +67,7 @@ async function TokenDetail({ params }: Pick<PageProps<"/tokens/[tokenId]">, "par
           history={history}
           accounts={accounts}
           conditionRecords={conditionRecords}
+          priorConditions={priorConditions}
         />
       </section>
     </div>
