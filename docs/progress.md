@@ -6,8 +6,9 @@
 
 ## 현재 상태
 
-- **단계**: Phase 1 · 6단계 완료 (사용자 MetaMask 확인 완료, 2026-11-26)
-- **다음 작업**: 7단계(Sepolia) 진행 중 — 사용자 준비(Alchemy 가입, 배포 계정·Sepolia ETH, keystore 등록) 대기. 업로드 U1~U4 완료
+- **단계**: Phase 1 완료 (7단계 Sepolia 배포·시연 확인, 2026-11-27). Phase 2 업로드 U1~U4 완료
+- **다음 작업**: Phase 2 나머지(판매자 환불·분쟁 제기 화면, 관리자 분쟁 중재 화면, 예외 상황 테스트) — 사용자 확인 후 시작
+- **시연 주소**: https://bside-marketplace.vercel.app (Sepolia)
 - **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결 + 거래 화면 (관리자, 발행, 판매 등록, 구매·수령 승인·정산 청구·등록 취소, 내 거래·출금)
 
 ## 진행 원칙
@@ -25,7 +26,7 @@
 | 4 | 배포 스크립트: 명령 한 번으로 NFT·에스크로 배포 → `setEscrow` → 아티스트 등록 → ABI·주소·배포 블록을 `lib/contracts/`로 내보내기 (에스크로 주소는 1회만 등록되므로 재배포는 이 스크립트로 전체를 다시 생성). NFT 발행은 별도 스크립트로 분리 | 로컬 노드에서 스크립트 1회 실행으로 배포·초기 설정 성공 | ☑ 완료 |
 | 5 | 프론트 기반: 지갑 연결, `MarketReader`·chainReader, 목록·상세·토큰 이력 페이지 | `npm run lint`, `npm run build` 통과, 로컬 노드 데이터 조회 확인 | ☑ 완료 |
 | 6 | 거래 화면: 관리자 아티스트 등록·회수, 발행, 판매 등록·등록 취소, 구매·수령 승인·기한 경과 정산 청구, 출금 (Pinata에 수동 업로드한 실제 CID 사용) | 로컬 노드에서 흐름 A·B 수동 시연 성공 | ☑ 완료 |
-| 7 | Sepolia 배포 및 시연 점검 (짧은 `confirmPeriod`) | Sepolia에서 흐름 A·B 시연 성공 | ◐ 진행 중 |
+| 7 | Sepolia 배포 및 시연 점검 (짧은 `confirmPeriod`) | Sepolia에서 흐름 A·B 시연 성공 | ☑ 완료 |
 
 ### 1단계 결과 (2026-11-22)
 
@@ -208,7 +209,7 @@
 
 참고: 컨트랙트의 환불·분쟁·중재 기능은 배포 후 변경이 어렵기 때문에 Phase 1(3단계)에서 함께 구현한다. 해당 화면(UI)은 Phase 2에서 만든다.
 
-### 7단계 진행 상황 (2026-11-27 시작)
+### 7단계 결과 (2026-11-27 완료, 사용자 시연 확인)
 
 - 결정 (사용자)
   - Sepolia `confirmPeriod` = 300초. 구매 시점 기준 기한은 MVP 단순화이며, 배송 완료 시점 기반 기한을 향후 개선 사항으로 기록 (proposal.md FR-05·6장). 상태 머신은 변경하지 않음
@@ -224,7 +225,11 @@
 - 앱 전환: `.env.local` `RPC_URL` → publicnode (사용자 수정). 개발 서버에서 `/`·`/admin`·`/mint`·`/my`·`/tokens/1`·`/listings/1` 응답 확인 — 판매 목록 비어 있음, 관리자 화면에 배포 계정 표시·등록 아티스트 없음(이벤트 조회 오류 없음), 없는 토큰·거래는 "찾을 수 없습니다"
 - Vercel 배포 (2026-11-27, 사용자): https://bside-marketplace.vercel.app (architecture.md 7.1)
   - 확인: `/`·`/admin`·`/mint`·`/my`·`/tokens/1`·`/listings/1` 모두 200. 관리자 화면에 사용자가 등록한 아티스트 `0xD440…EA76` 표시(publicnode 이벤트 조회 정상). 업로드 API에 서명 없이 요청하면 400 거부
-- 남은 작업: 흐름 A·B 시연 (Vercel 링크에서) → `.env.local` `RPC_URL` 전환 → 흐름 A·B 시연
+- 흐름 A·B 시연 (2026-11-27, 사용자 수동 확인): Vercel 링크에서 Sepolia MetaMask 계정으로 진행, 사용자 보고로 완료
+- 참고 (숨기지 않음)
+  - 시연 세부 결과(트랜잭션 해시, 계정별 잔액 변화)는 이 문서에 기록하지 않았다. 사용자 보고만으로 완료 처리
+  - 저장소의 `lib/contracts/deployment.json`은 Sepolia 값으로 유지해야 한다. 로컬 개발 시 `setup:local`이 덮어쓰므로 커밋하지 않는다 (architecture.md 7.1)
+  - 공개 RPC(publicnode)는 Vercel 공유 IP 때문에 요청 제한에 걸릴 수 있다. 시연 전에 접속을 확인한다
 
 ## Phase 2 — 상품 정보 및 거래 안정성
 
@@ -372,3 +377,4 @@
 | 2026-11-26 | Pinata 테스트 파일 정리: 검증 스크립트가 올린 9개(1×1 PNG, U2 상태 기록 2개, U3 메타데이터 1개, 최초 판매 검증 상태 기록 5개)를 사용자 요청으로 v3 API로 삭제(모두 HTTP 200). 사용자가 화면에서 직접 올린 파일과 Phase 1 수동 업로드는 유지 |
 | 2026-11-27 | 7단계 시작: Sepolia `confirmPeriod` 300초 결정(미결정 사항 해소), 구매 시점 기준 기한은 MVP 단순화로 명시, 배송 완료 기준 기한을 향후 개선 사항에 추가. `deploy:sepolia` 스크립트 추가 |
 | 2026-11-27 | Sepolia 배포(BSideNFT `0xAC41…93eF`, BSideEscrow `0xe696…8c60`) 및 온체인 설정 확인. 서버 조회 RPC를 publicnode로 전환. Vercel 시연 배포(https://bside-marketplace.vercel.app) 응답 확인 |
+| 2026-11-27 | Phase 1 · 7단계 완료: 사용자가 Vercel 링크에서 Sepolia 흐름 A·B 시연 확인. Phase 1 전 단계 완료 |
