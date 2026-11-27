@@ -346,7 +346,7 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 | 스크립트 | 명령 (`contracts/`에서) | 하는 일 |
 |---|---|---|
 | 로컬 노드 | `npm run node` | Hardhat 로컬 노드 실행 (`http://127.0.0.1:8545`, chainId 31337) |
-| `scripts/deploy.ts` | `npm run deploy:local` | BSideNFT 배포 → BSideEscrow 배포 → `setEscrow` → 아티스트 등록 → `lib/contracts/`로 ABI·배포 정보 내보내기 |
+| `scripts/deploy.ts` | `npm run deploy:local` / `npm run deploy:sepolia` | BSideNFT 배포 → BSideEscrow 배포 → `setEscrow` → 아티스트 등록 → `lib/contracts/`로 ABI·배포 정보 내보내기 |
 | `scripts/mint.ts` | `npm run mint:local` | `deployment.json`의 NFT 주소로 아티스트 계정이 NFT 1개 발행 |
 | `scripts/seed.ts` | `npm run seed:local` | 로컬(31337) 전용 테스트 데이터: 아티스트(계정 #1)가 NFT 1개 발행 → 최초 판매가로 판매 등록 |
 | (조합) | `npm run setup:local` | `deploy:local` + `seed:local`. 로컬 노드를 켤 때마다 1회 실행 (실행 순서는 README) |
@@ -354,7 +354,7 @@ app ──▶ components ──▶ hooks ──▶ lib/tx, lib/wallet ──▶ 
 seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_CID`(필수, `ipfs://` 없이 CID만). 발행 인자는 생략 시 로컬 기본값(PriceCap 12000bps, 0.05 ETH)을 쓴다. CID 값은 파일에 기록하지 않고 실행할 때 지정한다(6.4).
 
 배포 인자 (환경 변수):
-- `CONFIRM_PERIOD_SECONDS`: 수령 승인 기한(초). 로컬 기본값은 300초(5분)다. 로컬이 아닌 네트워크에서는 기본값이 없어 반드시 지정해야 한다 (Sepolia 값은 미결정, proposal.md 8장).
+- `CONFIRM_PERIOD_SECONDS`: 수령 승인 기한(초). 로컬 기본값은 300초(5분)다. 로컬이 아닌 네트워크에서는 기본값이 없어 반드시 지정해야 한다. Sepolia 시연 값은 300초다 (proposal.md FR-05). 기한은 `lockedAt`(구매 시점)부터 계산하며, 이것은 MVP의 단순화다 (배송 완료 시점 기반 기한은 향후 개선 사항, proposal.md 6장).
 - `ARTIST_ADDRESSES`: 아티스트로 등록할 주소(쉼표 구분). 로컬 기본값은 계정 #1이고, 로컬이 아니면 기본값이 없다.
 - `ARTIST_NAMES`: 활동명(쉼표 구분, `ARTIST_ADDRESSES`와 같은 순서·개수, 필수). 로컬 기본값은 "로컬 테스트 아티스트". 배포 스크립트는 `registerArtist`로 등록한다.
 - 배포 계정(계정 #0)이 두 컨트랙트의 관리자가 된다.
@@ -447,7 +447,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - Next.js 설정의 Cache Components(`cacheComponents: true`)에서 조회는 **요청 시점에 실행**한다. `chainReader`의 조회 함수는 `connection()`을 먼저 호출하고, 페이지는 조회 컴포넌트를 `<Suspense>`로 감싼다. 따라서 빌드에는 RPC가 필요 없고, 거래 후 `router.refresh()`로 항상 최신 상태를 받는다. `use cache`는 쓰지 않는다.
 - 같은 요청 안의 중복 조회(예: 전체 거래 목록, `confirmPeriod`)는 `React.cache`로 한 번만 실행한다.
 - `JsonRpcProvider`는 `deployment.json`의 chainId로 네트워크를 고정한다(`staticNetwork`). 연결 시 네트워크 감지 요청과 재시도를 생략한다.
-- 이벤트 조회 구간(`LOG_BLOCK_RANGE`)은 10,000블록이다. 무료 RPC의 `eth_getLogs` 범위 제한은 제공자마다 다르므로 Sepolia 배포 시 확인해 조정한다.
+- 이벤트 조회 구간(`LOG_BLOCK_RANGE`)은 10,000블록이다. 무료 RPC의 `eth_getLogs` 범위 제한은 제공자마다 다르다 (2026-11-27 확인: publicnode 10,000블록 응답, Alchemy 무료 10블록, 1rpc 50블록). 그래서 Sepolia 시연은 배포에 Alchemy(keystore), 서버 조회에 publicnode를 쓴다.
 - 토큰별 이력: `Listed`·`Purchased`·`Completed`·`Cancelled`·`Disputed`는 indexed `tokenId`로, `DisputeResolved`는 tokenId가 없으므로 그 토큰의 거래 ID 목록으로 조회한다. 거래가 없는 토큰은 로그를 조회하지 않는다.
 - 대체 이력(로그 조회 실패 시)에서 분쟁 제기 시각, 취소 사유, 로열티는 Listing에 저장되지 않으므로 "알 수 없음"으로 표시한다.
 - 조회 실패(RPC 연결 불가 등)는 `app/error.tsx`, 없는 거래·토큰은 `notFound()`로 처리한다. 스트리밍 중 처리되므로 HTTP 상태 코드는 200이다.
@@ -643,7 +643,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 
 | 파일 | 변수 | 용도 | 노출 범위 |
 |---|---|---|---|
-| `.env.local` | `RPC_URL` | 서버 조회용 RPC (개발: 로컬 Hardhat 노드, 시연: Sepolia) | 서버 전용 |
+| `.env.local` | `RPC_URL` | 서버 조회용 RPC (개발: 로컬 Hardhat 노드, 시연: 공개 RPC `ethereum-sepolia-rpc.publicnode.com`) | 서버 전용 |
 | `.env.local` | `PINATA_JWT` | IPFS 업로드 (Phase 2) | 서버 전용 |
 | Hardhat keystore (`contracts/`) | `SEPOLIA_PRIVATE_KEY`, `SEPOLIA_RPC_URL` | 컨트랙트 배포 | 로컬 전용 (암호화 저장) |
 

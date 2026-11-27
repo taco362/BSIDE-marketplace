@@ -6,6 +6,7 @@
  *
  * 실행
  *   로컬:   npm run node  (다른 터미널)  →  npm run deploy:local
+ *   Sepolia: CONFIRM_PERIOD_SECONDS=300 npm run deploy:sepolia  (keystore에 SEPOLIA_RPC_URL·SEPOLIA_PRIVATE_KEY 필요)
  *
  * 환경 변수 (선택)
  *   CONFIRM_PERIOD_SECONDS  수령 승인 기한(초). 로컬 기본값 300초. 로컬이 아니면 반드시 지정해야 한다.
@@ -89,7 +90,7 @@ function resolveConfirmPeriod(): bigint {
   const raw = process.env.CONFIRM_PERIOD_SECONDS;
   if (raw === undefined || raw === "") {
     if (isLocal) return DEFAULT_LOCAL_CONFIRM_PERIOD;
-    // Sepolia 기한 값은 미결정 사항이므로 기본값을 두지 않는다 (proposal.md 8장)
+    // 네트워크마다 값을 명시하도록 기본값을 두지 않는다 (Sepolia 시연 값 300초, proposal.md FR-05)
     throw new Error("로컬이 아닌 네트워크에서는 CONFIRM_PERIOD_SECONDS를 반드시 지정해야 합니다.");
   }
   if (!/^[1-9][0-9]*$/.test(raw)) throw new Error(`CONFIRM_PERIOD_SECONDS가 올바른 양의 정수가 아닙니다: ${raw}`);
