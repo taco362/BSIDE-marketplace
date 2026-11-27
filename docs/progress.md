@@ -222,7 +222,9 @@
   - publicnode로 직접 조회: 코드 크기 로컬 빌드와 동일, NFT↔에스크로 상호 등록, `confirmPeriod` 300, 관리자 `DEFAULT_ADMIN_ROLE`(양쪽)·`ARBITER_ROLE` 보유, 관리자에게 `ARTIST_ROLE` 없음 — 모두 확인
   - 첫 시도 2회 실패(Git Bash에서 PowerShell 문법 안내로 기한 값 누락, keystore 비밀번호 오입력). 둘 다 트랜잭션 전 중단되어 배포·가스 소모 없음
 - 앱 전환: `.env.local` `RPC_URL` → publicnode (사용자 수정). 개발 서버에서 `/`·`/admin`·`/mint`·`/my`·`/tokens/1`·`/listings/1` 응답 확인 — 판매 목록 비어 있음, 관리자 화면에 배포 계정 표시·등록 아티스트 없음(이벤트 조회 오류 없음), 없는 토큰·거래는 "찾을 수 없습니다"
-- 남은 작업: 계정별 Sepolia ETH 준비 → 관리자 화면에서 아티스트 등록(사용자) → 흐름 A·B 시연 → `.env.local` `RPC_URL` 전환 → 흐름 A·B 시연
+- Vercel 배포 (2026-11-27, 사용자): https://bside-marketplace.vercel.app (architecture.md 7.1)
+  - 확인: `/`·`/admin`·`/mint`·`/my`·`/tokens/1`·`/listings/1` 모두 200. 관리자 화면에 사용자가 등록한 아티스트 `0xD440…EA76` 표시(publicnode 이벤트 조회 정상). 업로드 API에 서명 없이 요청하면 400 거부
+- 남은 작업: 흐름 A·B 시연 (Vercel 링크에서) → `.env.local` `RPC_URL` 전환 → 흐름 A·B 시연
 
 ## Phase 2 — 상품 정보 및 거래 안정성
 
@@ -369,3 +371,4 @@
 | 2026-11-26 | U4 구현: 토큰 이력·거래 상세에 거래별 상태 기록 내용·사진 표시, 기록 형식 확인·어긋남 경고. 게이트웨이 요청을 CID로 제한(최초 판매 기록 작성의 tokenURI 요청 보완), `IpfsLink` 안전 처리. 검증 21건 통과, 사용자 화면 확인으로 완료 |
 | 2026-11-26 | Pinata 테스트 파일 정리: 검증 스크립트가 올린 9개(1×1 PNG, U2 상태 기록 2개, U3 메타데이터 1개, 최초 판매 검증 상태 기록 5개)를 사용자 요청으로 v3 API로 삭제(모두 HTTP 200). 사용자가 화면에서 직접 올린 파일과 Phase 1 수동 업로드는 유지 |
 | 2026-11-27 | 7단계 시작: Sepolia `confirmPeriod` 300초 결정(미결정 사항 해소), 구매 시점 기준 기한은 MVP 단순화로 명시, 배송 완료 기준 기한을 향후 개선 사항에 추가. `deploy:sepolia` 스크립트 추가 |
+| 2026-11-27 | Sepolia 배포(BSideNFT `0xAC41…93eF`, BSideEscrow `0xe696…8c60`) 및 온체인 설정 확인. 서버 조회 RPC를 publicnode로 전환. Vercel 시연 배포(https://bside-marketplace.vercel.app) 응답 확인 |

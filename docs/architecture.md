@@ -655,6 +655,14 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - 컨트랙트 배포용 비밀값은 평문 `.env` 파일 대신 Hardhat keystore에 암호화해 저장한다 (`npx hardhat keystore set SEPOLIA_PRIVATE_KEY`). `hardhat.config.ts`는 `configVariable`로 값을 참조하며, Sepolia 네트워크를 사용할 때만 값을 요구하므로 로컬 컴파일·테스트에는 비밀값이 필요 없다. 같은 이름의 환경 변수가 있으면 그 값을 사용할 수도 있다.
 - 컨트랙트 주소와 ABI는 비밀값이 아니므로 `lib/contracts/`에 저장한다.
 
+### 7.1 시연용 웹 호스팅 (Vercel)
+
+- Sepolia 시연 화면은 Vercel에 배포한다 (https://bside-marketplace.vercel.app, GitHub 저장소 연결, `main` = 정식 배포, 다른 브랜치 = 미리보기). 기획서의 기능 범위가 아닌 시연 편의를 위한 호스팅이다.
+- 환경 변수는 Vercel 프로젝트 설정에 넣는다: `RPC_URL`(publicnode), `PINATA_JWT`(Sensitive). 배포용 개인키·Alchemy 주소는 넣지 않는다.
+- 컨트랙트 주소는 커밋된 `lib/contracts/deployment.json`을 빌드에 포함해 읽는다. 따라서 저장소의 `deployment.json`은 Sepolia 값으로 유지한다 (로컬 개발 시 `setup:local`이 덮어쓰므로 커밋하지 않도록 주의).
+- 사진 업로드는 장당 4MB, 요청 1개당 사진 1장이므로 Vercel 함수 요청 크기 제한(약 4.5MB) 안에 들어간다.
+- 공개 링크이므로 누구나 화면을 볼 수 있다. 업로드 API는 지갑 서명·권한 확인(D12)으로 보호된다. 공개 RPC는 Vercel 공유 IP 때문에 요청 제한에 걸릴 수 있으므로 시연 전에 접속을 확인한다.
+
 ## 8. 보안 고려 사항과 알려진 한계
 
 ### 8.1 컨트랙트 보안 대책
