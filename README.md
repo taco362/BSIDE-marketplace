@@ -88,5 +88,6 @@ npm run dev
 cd contracts; npm test; npm run typecheck   # 컨트랙트
 npm test                                    # 도메인 함수 단위 테스트·오류 문구 누락 확인 (루트, tests/)
 npm run test:tx                             # 트랜잭션 오류 안내 문구 (로컬 노드를 포트 8546에 자동 실행, 먼저 contracts에서 npm run compile)
+npm run test:api                            # 업로드·AI·권한 API 거부 (실행 중인 서버 대상, 기본 localhost:3000, 다른 주소는 API_BASE_URL)
 npm run lint; npm run build                 # 프론트엔드 (루트)
 ```
