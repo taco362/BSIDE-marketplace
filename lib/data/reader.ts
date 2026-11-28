@@ -37,4 +37,8 @@ export interface MarketReader {
   getArtists(): Promise<AccountProfile[]>;
   /** 관리자 주소 (MVP: 배포 계정 1개, architecture.md 8.3) */
   getAdmin(): Promise<string>;
+
+  // ── Phase 2: 분쟁 중재 ──
+  /** 분쟁 중(DISPUTED)인 거래와 토큰 정보. 거래 ID 오름차순(오래 기다린 거래부터) */
+  getDisputedListings(): Promise<ListingWithToken[]>;
 }

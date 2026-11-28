@@ -15,8 +15,9 @@ type Args = ErrorDescription["args"];
 const REVERT_MESSAGES: Record<string, (args: Args) => string> = {
   // 공통 (OpenZeppelin)
   AccessControlUnauthorizedAccount: () =>
-    "이 계정에는 권한이 없습니다. 발행은 승인된 아티스트, 아티스트 등록·회수는 관리자 계정만 할 수 있습니다.",
+    "이 계정에는 권한이 없습니다. 발행은 승인된 아티스트, 아티스트 등록·회수와 분쟁 중재는 관리자 계정만 할 수 있습니다.",
   ReentrancyGuardReentrantCall: () => "중복 호출이 감지되어 거부되었습니다.",
+  AccessControlBadConfirmation: () => "권한 포기 확인 값이 올바르지 않습니다.",
   // BSideNFT
   EmptyTokenURI: () => "메타데이터 URI가 비어 있습니다.",
   ZeroInitialPrice: () => "최초 판매가는 0보다 커야 합니다.",
@@ -29,7 +30,13 @@ const REVERT_MESSAGES: Record<string, (args: Args) => string> = {
   ERC721IncorrectOwner: () => "NFT 소유자가 아닙니다.",
   ERC721InsufficientApproval: () => "에스크로에 NFT 사용 승인이 되어 있지 않습니다. 다시 시도하세요.",
   ERC721InvalidApprover: () => "NFT 소유자만 사용 승인을 할 수 있습니다.",
+  ERC721InvalidOwner: () => "NFT 소유자 주소가 올바르지 않습니다.",
+  ERC721InvalidSender: () => "NFT를 보내는 주소가 올바르지 않습니다.",
+  ERC721InvalidReceiver: () => "NFT를 받을 수 없는 주소입니다.",
+  ERC721InvalidOperator: () => "NFT 사용 승인 대상 주소가 올바르지 않습니다.",
+  EscrowAlreadySet: () => "에스크로는 이미 등록되어 있습니다 (배포 때 1회만 가능).",
   // BSideEscrow
+  ZeroConfirmPeriod: () => "수령 승인 기한은 0보다 커야 합니다 (배포 설정).",
   EscrowNotRegistered: () => "NFT 컨트랙트에 이 에스크로가 등록되어 있지 않습니다. 배포 상태를 확인하세요.",
   ListingNotFound: (a) => `거래 #${a[0]}을(를) 찾을 수 없습니다.`,
   InvalidStatus: (a) => {
@@ -46,7 +53,7 @@ const REVERT_MESSAGES: Record<string, (args: Args) => string> = {
   PriceExceedsCap: (a) => `재판매 상한(${formatEth(a[0])})을 넘는 가격입니다 (입력 ${formatEth(a[1])}).`,
   SelfPurchase: () => "자신이 등록한 상품은 구매할 수 없습니다.",
   IncorrectPayment: (a) => `결제 금액이 판매 가격과 다릅니다 (가격 ${formatEth(a[0])}, 보낸 금액 ${formatEth(a[1])}).`,
-  DeadlinePassed: () => "수령 승인 기한이 지났습니다.",
+  DeadlinePassed: () => "수령 승인 기한이 지나 분쟁을 제기할 수 없습니다.",
   DeadlineNotReached: () => "수령 승인 기한이 아직 지나지 않았습니다. 기한 이후에 정산을 청구할 수 있습니다.",
   NothingToWithdraw: () => "출금할 금액이 없습니다.",
   WithdrawFailed: () => "송금에 실패했습니다. 대기액은 그대로 남아 있으니 다시 시도하세요.",
@@ -91,7 +98,10 @@ function decodeRevert(error: unknown): ErrorDescription | null {
 export function toTxErrorMessage(error: unknown): string {
   if (isError(error, "ACTION_REJECTED")) return "MetaMask에서 서명이 거부되었습니다.";
   if ((error as { code?: unknown } | null)?.code === 4001) return "MetaMask에서 서명이 거부되었습니다.";
-  if (isError(error, "INSUFFICIENT_FUNDS")) return "지갑 잔액이 부족합니다 (가격 + 가스비).";
+  // ethers가 분류하지 못한 노드 문구도 잔액 부족으로 본다 (Hardhat: "doesn't have enough funds", geth: "insufficient funds")
+  if (isError(error, "INSUFFICIENT_FUNDS") || collectMessages(error).some((m) => /insufficient funds|enough funds/i.test(m))) {
+    return "지갑 잔액이 부족합니다 (가격 + 가스비).";
+  }
 
   const revert = decodeRevert(error);
   if (revert) {

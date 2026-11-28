@@ -54,24 +54,29 @@ b-side/
 │  ├─ error.tsx, not-found.tsx    # 조회 실패, 없는 거래·토큰
 │  ├─ listings/[id]/
 │  │  ├─ page.tsx                 # 거래 상세 (조회 + 조립)
-│  │  └─ _components/             # 이 페이지 전용 (ListingInfo, ListingActions — 상태·역할별 거래 버튼)
+│  │  └─ _components/             # 이 페이지 전용 (ListingInfo, ListingActions — 상태·역할별 거래 버튼, DisputeForm — 분쟁 사유 입력·제기 6.8)
 │  ├─ tokens/[tokenId]/           # NFT 정보, 정책, 거래 이력 (page.tsx + _components/TokenListingsTable, TradeTimeline)
 │  ├─ mint/                       # 아티스트 NFT 발행 (page.tsx + _components/MintForm)
 │  ├─ sell/[tokenId]/             # 판매 등록 (page.tsx + _components/SellForm, ConditionFields). NFT 선택은 my의 보유 NFT 목록에서
 │  ├─ my/                         # 출금, 보유 NFT, 판매·구매 거래 (?account=, 6.5) (+ _components/AccountSync, WithdrawPanel, MyTokenList, MyListingsTable)
-│  ├─ admin/                      # 아티스트 등록·활동명 변경·회수 (+ _components/RegisterArtistForm, ArtistTable, RevokeArtistButton). 분쟁 중재는 Phase 2
+│  ├─ admin/                      # 분쟁 중재, 아티스트 등록·활동명 변경·회수 (+ _components/DisputeTable, ResolveDisputeButtons, RegisterArtistForm, ArtistTable, RevokeArtistButton)
 │  ├─ api/account/roles/          # 연결 지갑의 관리자·아티스트 여부 (메뉴 표시용, 6.5)
-│  ├─ api/ipfs/                   # Pinata 업로드 (Phase 2, 6.3): images/route.ts(U1), condition/route.ts(U2), metadata/route.ts(U3)
+│  ├─ api/ipfs/                   # Pinata 업로드 (Phase 2, 6.3): images/route.ts(U1), condition/route.ts(U2), metadata/route.ts(U3), dispute/route.ts(분쟁 사유, 6.8)
 │  └─ api/ai/                     # AI 보조 (D14, 6.7): condition-draft/route.ts(A2), token-summary/route.ts(A3)
 ├─ components/                    # 여러 페이지에서 재사용하는 UI
 │  ├─ ui/                         # 도메인과 무관한 기본 요소 (DetailList, IpfsLink, CopyButton, FormField)
 │  ├─ account/                    # AccountLabel (활동명·인증 표시·축약/전체 주소, D7)
 │  ├─ wallet/                     # ConnectButton (연결·네트워크 전환), NetworkGuard (거래 기능에서만 연결·네트워크 요구), RoleGate (권한 화면 표시, 6.5)
-│  ├─ listing/                    # ListingStatusBadge
+│  ├─ listing/                    # ListingStatusBadge, ListingTitle (상품 이름 제목, 목록 카드·분쟁 목록)
 │  ├─ token/                      # TokenSummary, PolicyBadge
 │  ├─ tx/                         # TxStatus (서명 대기·처리 중·블록 포함 대기·성공·실패 표시), TxButton (입력 없는 단일 동작 버튼)
 │  ├─ upload/                     # PhotoPicker (사진 선택·미리보기, 6.3)
+│  ├─ dispute/                    # DisputeRecordView (분쟁 사유 기록 표시, 6.8)
 │  └─ condition/                  # ConditionRecordView (거래별 상품 상태 기록 표시, 6.6), ConditionHistoryWarnings (모순 경고, 6.7)
+├─ tests/domain/                  # 도메인 함수 단위 테스트 (node:test + tsx, `npm test`, 9장)
+├─ scripts/check-secrets.ts       # 비밀값 노출 점검 (`npm run check:secrets`, 9장)
+├─ tests/api/                     # 업로드·AI·권한 API 거부 테스트 (실행 중인 서버 대상, `npm run test:api`, 9장)
+├─ tests/tx/                      # 트랜잭션 오류 문구: 오류 문구 누락 확인(`npm test`), 로컬 노드 실제 호출(`npm run test:tx`, 9장)
 ├─ hooks/                         # 클라이언트 상태 훅
 │  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (모듈 단위 저장소 + useSyncExternalStore, 6.5)
 │  ├─ useAccountRoles.ts         # 연결 지갑의 권한 (메뉴 표시용, 6.5)
@@ -93,6 +98,7 @@ b-side/
 │  │  ├─ conditionHistory.ts      # 이전 완료 거래 기록과의 모순 경고 (6.7, A1)
 │  │  ├─ ai.ts                    # AI 사진 크기·요청 크기 상한 (6.7, A2)
 │  │  ├─ metadata.ts              # NFT 메타데이터에서 상품 이름 읽기 (6.1)
+│  │  ├─ dispute.ts               # 분쟁 사유 목록·입력 확인·기록 형식 확인·Pinata 꼬리표 값 (6.8)
 │  │  └─ historyFacts.ts          # AI 이력 요약에 넘길 사실 목록 계산 (6.7, A3)
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
@@ -106,17 +112,18 @@ b-side/
 │  │  ├─ chain/logs.ts            # 이벤트 로그 구간 나누어 조회 (server-only)
 │  │  ├─ ipfs/conditionRecords.ts # 상태 기록 조회 (server-only, 6.6)
 │  │  ├─ ipfs/tokenMetadata.ts    # 상품 이름 조회 (server-only, 6.1 판매 목록 카드)
+│  │  ├─ ipfs/disputeRecords.ts   # 분쟁 사유 기록 조회: Pinata 꼬리표 검색 → 게이트웨이 (server-only, 6.8)
 │  │  └─ index.ts                 # getMarketReader(): chainReader 반환 (구현체 선택 로직 없음)
 │  ├─ tx/                         # 쓰기 전용 (client), 컨트랙트별로 분리
 │  │  ├─ nft.ts                   # mint, approve(필요할 때만), 아티스트 등록·회수, 발행 영수증에서 토큰 ID 찾기
-│  │  ├─ escrow.ts                # list, cancelListing, buy, confirmReceipt, claimAfterTimeout, withdraw (refund·dispute·resolve는 Phase 2)
+│  │  ├─ escrow.ts                # list, cancelListing, buy, confirmReceipt, claimAfterTimeout, withdraw, refundBySeller, openDispute, resolveDispute
 │  │  └─ errors.ts                # 트랜잭션 오류·custom error → 한국어 안내 문구
 │  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer (client)
 │  ├─ api/upload.ts               # 업로드 확인 서명, /api/ipfs/* 호출 (client, 6.3)
 │  ├─ api/account.ts              # 권한 조회 /api/account/roles 호출 (client, 6.5)
-│  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
+│  ├─ ipfs/pinata.ts              # Pinata 업로드(꼬리표 포함)·꼬리표 검색 (server-only, Phase 2)
 │  ├─ ipfs/gateway.ts             # 게이트웨이에서 CID의 JSON 읽기 (server-only, 최초 판매 상태 기록·6.6 표시)
-│  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts (server-only, 6.3)
+│  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts, condition.ts·metadata.ts·dispute.ts(기록 작성) (server-only, 6.3)
 │  ├─ ai/                         # AI 호출: gemini.ts, errors.ts, conditionDraft.ts(A2), tokenSummary.ts·summaryCache.ts·rateLimit.ts(A3) (server-only, 6.7)
 │  ├─ media/downscale.ts          # 브라우저 사진 축소, AI 초안용 (client, 6.7)
 │  ├─ api/ai.ts                   # 브라우저: AI 초안·요약 요청 (client, 6.7)
@@ -455,7 +462,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - 전체를 훑는 방식은 거래 수에 비례해 느려진다. MVP 규모(수십~수백 건)에서는 충분하며, 규모가 커지면 PostgreSQL로 전환한다.
 
 구현 세부 (5단계):
-- `MarketReader` 메서드는 화면에서 쓰는 것만 둔다: `getActiveListings`, `getListing`, `getToken`, `getListingsByToken`, `getTokenHistory`, `getAccounts`. 6단계에서 `getTokensByOwner`(내 NFT, 에스크로 예치분 제외), `getListingsByAccount`(판매·구매 거래), `getPendingWithdrawal`(출금 대기액), `getArtists`(등록된 아티스트), `getAdmin`(관리자 주소 = `deployment.json`의 `admin`)을 추가했다. 분쟁 목록은 Phase 2 중재 화면을 만들 때 추가한다.
+- `MarketReader` 메서드는 화면에서 쓰는 것만 둔다: `getActiveListings`, `getListing`, `getToken`, `getListingsByToken`, `getTokenHistory`, `getAccounts`. 6단계에서 `getTokensByOwner`(내 NFT, 에스크로 예치분 제외), `getListingsByAccount`(판매·구매 거래), `getPendingWithdrawal`(출금 대기액), `getArtists`(등록된 아티스트), `getAdmin`(관리자 주소 = `deployment.json`의 `admin`)을 추가했다. Phase 2 중재 화면에서 `getDisputedListings`(DISPUTED 거래, 거래 ID 오름차순)를 추가했다.
 - 아티스트 목록(`chain/artists.ts`): `ArtistRegistered` 이벤트로 등록된 적이 있는 주소를 모으고 현재 활동명·승인 여부를 조회한다. 회수된 아티스트도 포함한다. `grantRole`로만 승인된 주소는 나오지 않는다(4.1, 사용하지 않는 경로). 이벤트 구간 조회는 `chain/logs.ts`를 토큰 이력과 함께 쓴다.
 - Next.js 설정의 Cache Components(`cacheComponents: true`)에서 조회는 **요청 시점에 실행**한다. `chainReader`의 조회 함수는 `connection()`을 먼저 호출하고, 페이지는 조회 컴포넌트를 `<Suspense>`로 감싼다. 따라서 빌드에는 RPC가 필요 없고, 거래 후 `router.refresh()`로 항상 최신 상태를 받는다. `use cache`는 쓰지 않는다.
 - 같은 요청 안의 중복 조회(예: 전체 거래 목록, `confirmPeriod`)는 `React.cache`로 한 번만 실행한다.
@@ -488,17 +495,17 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - Cache Components는 방문했던 화면을 `<Activity>`로 숨겨 클라이언트 상태를 보존한다(최근 3개 라우트). 따라서 거래 결과 표시는 컴포넌트 상태만으로 판단하지 않는다.
   - 판매 등록 완료 표시는 NFT가 실제로 에스크로에 있을 때(`token.inEscrow`)만 보여준다. 취소 후 다시 들어오면 폼이 보인다.
   - 거래 상세의 버튼 영역은 `key`(거래 상태 + 계정)로 묶는다. 상태가 바뀌면 새로 그려서, 이전 동작의 진행·완료 표시가 다음 동작 버튼에 남지 않게 한다.
-- 버튼 노출과 입력 확인(가격 규칙, 정책 수치 범위, CID 형식)은 화면 안내용이며 최종 검증은 컨트랙트가 한다. 되돌릴 수 없는 동작(발행, 구매, 수령 승인, 정산 청구, 등록 취소, 승인 회수)은 실행 전에 확인 창을 띄운다.
+- 버튼 노출과 입력 확인(가격 규칙, 정책 수치 범위, CID 형식)은 화면 안내용이며 최종 검증은 컨트랙트가 한다. 되돌릴 수 없는 동작(발행, 구매, 수령 승인, 정산 청구, 등록 취소, 판매자 환불, 분쟁 제기, 분쟁 중재, 승인 회수)은 실행 전에 확인 창을 띄운다.
 
 | 화면 | 동작 (호출자) | 노출 조건 |
 |---|---|---|
-| `/admin` | 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`일 때만 내용 표시, 아니면 안내만 (`RoleGate`, 6.5) |
+| `/admin` | 분쟁 중재 `resolveDispute`(구매자 환불 / 판매자 정산, `ARBITER_ROLE`), 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`일 때만 내용 표시, 아니면 안내만 (`RoleGate`, 6.5) |
 | `/mint` | 업로드 확인 서명 → 대표 이미지·메타데이터 업로드(6.3) → 발행 `mint` (아티스트) | 승인된 아티스트일 때만 폼 표시, 아니면 안내만 (`RoleGate`, 6.5) |
 | `/sell/[tokenId]` | 업로드 확인 서명 → 사진·상태 기록 업로드(6.3, 최초 판매는 서버 자동 작성) → `approve` → `list` (소유자) | 소유자일 때. 가격은 `listingPriceRule`: 최초 판매면 최초 판매가 고정, 정가 보호형 재판매면 상한 안내 |
-| `/listings/[id]` | LISTED: 구매 `buy`(판매자 외) / 등록 취소 `cancelListing`(판매자). LOCKED: 수령 승인 `confirmReceipt`(구매자) / 정산 청구 `claimAfterTimeout`(판매자, 기한 전에는 비활성) | 상태·역할별. DISPUTED·종료 상태는 안내 문구만 |
+| `/listings/[id]` | LISTED: 구매 `buy`(판매자 외) / 등록 취소 `cancelListing`(판매자). LOCKED: 수령 승인 `confirmReceipt`·분쟁 제기(사유 기록 업로드 6.8 → `openDispute`, 구매자, 기한 전에만 활성) / 정산 청구 `claimAfterTimeout`(판매자, 기한 전에는 비활성)·전액 환불 `refundBySeller`(판매자, 기한과 무관) | 상태·역할별. DISPUTED·종료 상태는 안내 문구만 |
 | `/my` | 출금 `withdraw` (본인) | 조회 계정과 연결 계정이 같을 때 |
 
-- 판매자 환불(`refundBySeller`), 분쟁 제기(`openDispute`), 중재(`resolveDispute`) 화면은 Phase 2에서 추가한다.
+- 판매자 환불(`refundBySeller`)과 분쟁 제기(`openDispute`)는 Phase 2에서 거래 상세에, 중재(`resolveDispute`)는 `/admin`에 추가했다. 분쟁 사유는 구매자가 제기 전에 IPFS 기록으로 남긴다(6.8). 중재 목록은 상품 이름·가격·판매자·구매자·구매 시각과 분쟁 사유 기록을 보이고, 상품 상태 기록은 거래 상세 링크로 확인한다.
 
 ### 6.3 IPFS 업로드 흐름 (Phase 2, proposal.md D11~D13)
 
@@ -759,12 +766,34 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 | `app/api/ai/token-summary/route.ts` | 요청 해석 → 조회 → 사실 → 캐시·제한 → 요약 |
 | `app/tokens/[tokenId]/_components/TokenAiSummary.tsx` | 버튼·요약 표시 (client) |
 
+### 6.8 분쟁 사유 기록 (proposal.md D15)
+
+구매자가 분쟁을 제기할 때 사유·설명·사진을 남기고, 관리자 중재 화면과 분쟁 중인 거래 상세에 표시한다. 컨트랙트는 바꾸지 않는다 (`openDispute(listingId)` 그대로).
+
+흐름 (거래 상세 → `DisputeForm`):
+1. 구매자가 사유(5개 중 1개)·설명·사진(0~3장)을 입력한다. 설명은 "기타"일 때만 필수, 최대 500자.
+2. 업로드 확인 서명 (용도 `dispute`, 문장에 거래 번호 포함). 서버는 서명 → 유효 시간 → 권한(거래의 구매자, LOCKED, 서버 시각 기준 기한 전)을 확인한다 (`lib/upload/auth.ts`의 `verifyDisputeAuth`).
+3. 사진은 기존 `POST /api/ipfs/images`(용도 `dispute`, `listingId`)로 1장씩 올린다.
+4. `POST /api/ipfs/dispute`: 서버가 `{ type: "dispute", listingId, tokenId, buyer, reason, description, images, createdAt }`을 작성해(listingId·tokenId·buyer·createdAt은 서버가 채움) Pinata에 올린다. 이때 꼬리표 `bsideDispute = "<chainId>:<에스크로 주소 소문자>:<listingId>"`를 붙인다.
+5. 브라우저가 `openDispute`를 호출한다. 서명을 거부하면 입력이 같을 때 다시 올리지 않는다.
+
+거래와 기록의 연결:
+- 컨트랙트에 사유 기록 CID를 남기지 않으므로, 서버가 Pinata 파일 목록 API(`GET /v3/files/public?metadata[bsideDispute]=…`, 최근 순)로 찾는다 (`lib/data/ipfs/disputeRecords.ts`). 검색에는 `PINATA_JWT`에 Files 읽기 권한이 필요하다.
+- 꼬리표는 우리 서버만(비밀 키로) 붙일 수 있다. 그래도 읽을 때 기록의 `listingId`·`tokenId`·`buyer`를 체인의 거래와 다시 맞춰 보고, 맞지 않으면 버린다 (`parseDisputeRecord`).
+- 같은 거래에 기록이 여러 개면(업로드 후 분쟁 제기 거부, 다시 시도) 가장 최근의 유효한 기록을 쓴다. 분쟁 제기가 끝내 실패한 기록은 거래가 DISPUTED가 아니므로 표시되지 않는다.
+- 결과: `ok`(기록), `none`(기록 없음: 기능 이전에 제기되었거나 화면을 거치지 않은 분쟁), `unavailable`(검색·게이트웨이 실패). 페이지는 기다리지 않고 Promise를 넘기고 `components/dispute/DisputeRecordView`가 `<Suspense>` 안에서 표시한다.
+
+한계 (숨기지 않음):
+- 연결 정보가 Pinata 계정에 있다. Pinata 파일을 지우거나 계정을 바꾸면 기록을 찾지 못한다. 기록 자체는 CID로 위조를 확인할 수 있지만, 체인에는 남지 않는다. 향후 `openDispute(listingId, reasonCID)`로 컨트랙트를 바꾸면 체인 이벤트에 남길 수 있다 (재배포 필요).
+- 표시는 분쟁 중(DISPUTED)인 거래에서만 한다. 중재가 끝난 거래의 사유 기록은 화면에 다시 보이지 않는다 (IPFS에는 남음).
+- 사유·설명·사진은 공개 IPFS에 올라가 누구나 볼 수 있다. 화면에서 개인정보를 적지 않도록 안내한다.
+
 ## 7. 환경 변수와 비밀값
 
 | 파일 | 변수 | 용도 | 노출 범위 |
 |---|---|---|---|
 | `.env.local` | `RPC_URL` | 서버 조회용 RPC (개발: 로컬 Hardhat 노드, 시연: 공개 RPC `ethereum-sepolia-rpc.publicnode.com`) | 서버 전용 |
-| `.env.local` | `PINATA_JWT` | IPFS 업로드 (Phase 2) | 서버 전용 |
+| `.env.local` | `PINATA_JWT` | IPFS 업로드 (Phase 2), 분쟁 사유 기록 검색 (6.8). Files 쓰기·읽기 권한 필요 | 서버 전용 |
 | `.env.local` | `GEMINI_API_KEY` | AI 보조 기능 (6.7, Google AI Studio 무료 등급 키, 결제 미연결) | 서버 전용 |
 | Hardhat keystore (`contracts/`) | `SEPOLIA_PRIVATE_KEY`, `SEPOLIA_RPC_URL` | 컨트랙트 배포 | 로컬 전용 (암호화 저장) |
 
@@ -817,7 +846,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
   - 임의 주소로 송금하거나 컨트랙트 잔액 출금
   - 분쟁에서 두 가지 결과 외의 처리
 - 관리자가 분쟁을 처리하지 않으면 DISPUTED 상태가 무기한 유지되고 자금과 NFT가 묶인다. MVP에는 중재 기한이 없다.
-- 중재 판단의 근거(사진, 대화 등)는 오프체인에 있으며 관리자 신뢰에 기반한다. 이의 신청 절차는 없다.
+- 중재 판단의 근거는 판매자의 상품 상태 기록과 구매자의 분쟁 사유 기록(6.8, IPFS)이다. 그 밖의 근거(대화 등)는 오프체인에 있으며 판단은 관리자 신뢰에 기반한다. 이의 신청 절차는 없다.
 - 관리자가 다른 지갑으로 거래 당사자가 되는 이해 충돌은 기술적으로 막을 수 없다.
 - 아티스트 권한을 회수해도 이미 발행된 NFT와 정책은 유지된다.
 - 향후 개선 후보(미확정): 멀티시그 관리자, 타임락, 중재 기한.
@@ -835,8 +864,12 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - **NFT 전송**: 수신 기능 없는 컨트랙트 구매자에게도 정산이 완료되는지, 에스크로로 `safeTransferFrom` 직접 전송 시 거부되는지
 
 프론트엔드:
+- `npm test`: `lib/domain` 순수 함수 단위 테스트 (`tests/domain/*.test.ts`, Node 내장 `node:test` + `tsx`, 블록체인·네트워크 불필요). 가격 규칙·정책 수치 경계, ETH 변환, 활동명 바이트 길이, 업로드 입력 확인, 서명 문장(용도·번호·체인·시각별로 달라짐), 상태 기록 해석, 모순 경고, 분쟁 사유 입력·기록 해석, AI 요약 사실 목록·숫자 확인
+- `npm test`의 `tests/tx/txErrorCoverage.test.ts`: 두 컨트랙트 ABI의 모든 custom error에 한국어 문구가 있는지 (MetaMask가 감싼 오류 모양으로 확인)
+- `npm run test:tx`: 포트 8546에 Hardhat 노드를 띄우고 `contracts/artifacts` 바이트코드로 새로 배포해, 일부러 실패하는 호출의 오류를 `toTxErrorMessage`에 넣어 문구를 확인한다 (권한·입력·가격 규칙·상태별 거부·기한 경계·중복 중재·잔액 부족·MetaMask가 감싼 오류). `deployment.json`은 건드리지 않는다. ethers의 같은 요청 결과 재사용(`cacheTimeout`)을 끈다
+- `npm run test:api`: 실행 중인 서버(기본 `localhost:3000`, `API_BASE_URL`)의 업로드·AI·권한 API에 임의 지갑으로 서명해 요청하고, Pinata 업로드·Gemini 호출 전에 거부되는지 확인한다 (서명 없음·주소 불일치·번호 불일치·다른 체인·다른 용도 서명 재사용·만료·미래 시각, 권한 없음, 없는 NFT·거래, 요청 크기). 권한이 있는 지갑이 필요한 형식 검사(사진 바이트 판별 등)는 다루지 않는다. 대상이 체인에 없으면 403 대신 400으로 확인한다
 - `npm run lint`, `npm run build`
-- 비밀값 노출 점검: 빌드 후 `.next/static`(브라우저로 전달되는 파일)에서 `RPC_URL`, `PINATA_JWT` 값이 검색되지 않는지 확인
+- 비밀값 노출 점검 `npm run check:secrets` (`scripts/check-secrets.ts`, 빌드 후): 브라우저 파일(`.next/static`)에 키 형식(JWT·Google API 키·키가 들어간 RPC 주소)·서버 전용 환경 변수 이름·서버 조회 RPC 주소·Pinata/Gemini API 주소(서버 전용 모듈의 흔적)가 없는지, 서버 빌드에 키 값이 박혀 있지 않은지, 저장소에 `.env` 파일·키 형식 문자열이 없는지, 소스에 `NEXT_PUBLIC_` 변수가 없는지. 기본 실행은 `.env.local`을 읽지 않고 형식으로만 찾는다. 실제 값 비교는 실행하는 사람이 `node --env-file=.env.local --import tsx scripts/check-secrets.ts`로 할 수 있다 (값은 출력하지 않음)
 - CID 점검: 시연에 사용하는 메타데이터·상태 기록 CID가 공개 게이트웨이에서 조회되는지 발행·등록 전에 확인
 - 로컬 Hardhat 노드와 MetaMask 계정 3개(관리자·아티스트 / 판매자 / 구매자)로 흐름 A·B 수동 시연
 - Sepolia 배포 후 같은 시나리오 반복

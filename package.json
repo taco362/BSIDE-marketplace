@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx --test \"tests/**/*.test.ts\"",
+    "test:tx": "tsx --test \"tests/tx/*.integration.ts\"",
+    "test:api": "tsx --test \"tests/api/*.integration.ts\"",
+    "check:secrets": "tsx scripts/check-secrets.ts"
   },
   "dependencies": {
     "ethers": "^6.17.0",
@@ -23,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

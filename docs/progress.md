@@ -6,9 +6,9 @@
 
 ## 현재 상태
 
-- **단계**: Phase 1 완료 (7단계 Sepolia 배포·시연 확인, 2026-11-27). Phase 2 업로드 U1~U4 완료. AI 보조 기능 A1~A3 완료·`main` 병합 (D14, 교수님 피드백 반영, 2026-11-28)
-- **최근 완료**: 권한별 메뉴·화면 표시, 판매 목록 카드 상품 이름 표시 (사용자 화면 확인, `main` 병합 2026-11-28)
-- **다음 작업**: Phase 2 나머지(판매자 환불·분쟁 제기 화면, 관리자 분쟁 중재 화면, 예외 상황 테스트)
+- **단계**: Phase 1 완료 (7단계 Sepolia 배포·시연 확인, 2026-11-27). Phase 2 완료 (업로드 U1~U4, 판매자 환불·분쟁 제기 R1, 분쟁 중재 R2, 분쟁 사유 기록 R2b, 예외 상황 테스트 R3, 2026-11-28). AI 보조 기능 A1~A3 완료 (D14)
+- **최근 완료**: Phase 2 R1~R3 (브랜치 `feature/dispute-refund`, `main` 병합 전)
+- **다음 작업**: `feature/dispute-refund`를 `main`에 병합할지 사용자 확인. 그 후 Phase 3 범위 결정
 - **시연 주소**: https://bside-marketplace.vercel.app (Sepolia)
 - **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결 + 거래 화면 (관리자, 발행, 판매 등록, 구매·수령 승인·정산 청구·등록 취소, 내 거래·출금)
 
@@ -242,9 +242,10 @@
 | U2 | 상품 상태·사진 등록 화면: 판매 등록 화면에서 입력 → 서버가 상태 기록 JSON 작성·업로드 → `list` (수동 CID 입력 대체) | 로컬에서 흐름 B 재판매 등록 성공 | ☑ 완료 |
 | U3 | 발행 메타데이터 업로드: 발행 화면에서 이름·설명·대표 이미지 입력 → 업로드 → `mint` (D13) | 로컬에서 흐름 A 발행 성공 | ☑ 완료 |
 | U4 | 과거 상품 상태 조회: 거래 이력에 거래별 상태 기록 내용과 사진 표시 | 여러 번 거래된 NFT의 거래별 상태 표시 확인 | ☑ 완료 |
-| 판매자 환불, 분쟁 제기 화면 | ☐ 대기 |
-| 관리자 분쟁 중재 화면 | ☐ 대기 |
-| 예외 상황 테스트 보강 | ☐ 대기 |
+| R1 | 판매자 환불, 분쟁 제기 화면 (거래 상세) | 판매자 환불·구매자 분쟁 제기 후 상태 변경 확인 | ☑ 완료 (사용자 화면 확인) |
+| R2 | 관리자 분쟁 중재 화면 (`/admin`) | 분쟁 목록 표시, 두 결과 각각 처리 확인 | ☑ 완료 (사용자 화면 확인) |
+| R2b | 분쟁 사유 기록 (D15): 사유·설명·사진 → IPFS, 관리자 화면·거래 상세 표시 | 사유 기록 후 분쟁 제기, 관리자 화면에 사유 표시 | ☑ 완료 (사용자 화면 확인) |
+| R3 | 예외 상황 테스트 보강 (사용자 결정: R3-1 도메인 단위 테스트, R3-2 트랜잭션 오류 안내 문구, R3-3 업로드 API 거부 테스트 스크립트, R3-4 비밀값 노출 점검) | 각 테스트가 저장소에 남고 통과 | ☑ 완료 |
 
 ### AI 보조 기능 (D14, 2026-11-27 추가)
 
@@ -431,12 +432,100 @@
 ### 판매 목록 카드 상품 이름 표시 (2026-11-28, 사용자 요청)
 
 - 요청: 카드의 토큰·거래 번호 대신 무슨 물건인지 이름을 보여 주기. 아티스트·판매자를 한 줄로 합치는 안도 검토했으나, 재판매 카드에서 창작자 정보가 사라지는 문제로 사용자가 유지하기로 결정. 대표 이미지는 넣지 않음 (사용자 결정)
-- 구현: `lib/domain/metadata.ts`(`parseTokenName`), `lib/data/ipfs/tokenMetadata.ts`(`getTokenName`, `ipfs://<CID>`만 요청, 오류 시 null), `app/_components/ListingTitle.tsx`(Suspense 제목, 대체값 "NFT #n"), `ListingCard`에서 번호 줄 제거, `app/page.tsx`에서 카드마다 이름 Promise 전달
+- 구현: `lib/domain/metadata.ts`(`parseTokenName`), `lib/data/ipfs/tokenMetadata.ts`(`getTokenName`, `ipfs://<CID>`만 요청, 오류 시 null), `ListingTitle`(Suspense 제목, 대체값 "NFT #n". 처음 `app/_components/`, R2에서 분쟁 목록과 함께 쓰게 되어 `components/listing/`로 이동), `ListingCard`에서 번호 줄 제거, `app/page.tsx`에서 카드마다 이름 Promise 전달
 - 검증
   - `npm run lint`, `npm run build` 통과
   - `parseTokenName` 9건 통과 (scratchpad): 공백 정리, 빈 이름·공백만·숫자·이름 없음·null·배열·문자열 → null, 150자 → 100자 + 말줄임
   - 사용자 dev 서버(Sepolia) `/` HTML: 번호 줄 없음, 카드 제목이 대체값("NFT #2", "NFT #1")에서 상품 이름("201 LP", "Ballad of you LP")으로 스트리밍됨
 - 사용자 화면 확인 (2026-11-28): 목록 카드 상품 이름 표시 확인 (사용자 보고 "확인했습니다")
+
+### R1 판매자 환불·분쟁 제기 화면 (2026-11-28)
+
+- 범위: 거래 상세(`/listings/[id]`)의 LOCKED 상태 버튼만 추가. 컨트랙트 변경 없음. 분쟁 사유·증빙 입력은 기획에 없고 저장할 곳도 없어 만들지 않음 (architecture.md 8.3)
+- 구현
+  - `lib/tx/escrow.ts`: `refundBySeller`, `openDispute`, `resolveDispute`(R2에서 화면 연결)
+  - `ListingActions`: 구매자 → 수령 승인 + 분쟁 제기(기한 전에만 활성, 기한 후 안내), 판매자 → 정산 청구 + 전액 환불(기한과 무관). 두 동작 모두 확인 창. DISPUTED 안내 문구 보완
+  - `lib/tx/errors.ts`: `DeadlinePassed` 문구를 분쟁 기준으로, 권한 오류 문구에 분쟁 중재 추가
+  - 함께 고친 문제: 수령 승인 확인 창 문구가 JSX 속성 문자열이라 줄바꿈 대신 `
+` 글자가 그대로 보였음 → `{"…
+…"}` 식으로 수정
+- 검증
+  - `npm run lint`, `npm run build` 통과
+  - 세 함수 이름이 배포 ABI(`lib/contracts/abi/BSideEscrow.json`)에 있음 확인. 상태·권한·기한 조건은 3단계 컨트랙트 테스트(판매자 환불 3건, 분쟁 7건, 기한 경계 6건)가 검증
+- 사용자 MetaMask 확인 (2026-11-28, Sepolia): 분쟁 제기·판매자 환불 동작 확인 (사용자 보고 "확인했습니다")
+
+### R2 관리자 분쟁 중재 화면 (2026-11-28)
+
+- 구현 (컨트랙트 변경 없음)
+  - `MarketReader.getDisputedListings()`: 전체 거래에서 DISPUTED만, 거래 ID 오름차순(오래 기다린 거래부터)
+  - `/admin` 맨 위 "분쟁 중재 (n건)" 섹션: `DisputeTable`(상품 이름, 거래 상세 링크, 가격, 판매자·구매자 전체 주소, 구매 시각), `ResolveDisputeButtons`(구매자 환불 / 판매자 정산, 확인 창). 관리자 지갑일 때만 보임(`RoleGate`)
+  - `ListingTitle`을 `app/_components/`에서 `components/listing/`로 이동 (두 곳에서 사용, 3.1 규칙)
+- 검증
+  - `npm run lint`, `npm run build` 통과
+  - 사용자 dev 서버(Sepolia) `/admin` 응답: R1에서 만든 분쟁 거래 #7이 "분쟁 중재 (1건)"으로 실림, 두 버튼 문구 포함
+- 사용자 MetaMask 확인 (2026-11-28, Sepolia 관리자 계정): 중재 정상 동작 (사용자 보고 "정상 작동")
+
+### R2b 분쟁 사유 기록 (2026-11-28, 사용자 결정 C1안)
+
+- 배경: 분쟁 사유를 남길 곳이 없어 발표 때 지적이 예상됨. 검토안 A(향후 과제)·B(DB 추가)·C1(IPFS + Pinata 꼬리표 검색, 컨트랙트 그대로)·C2(IPFS + 컨트랙트 수정·재배포) 중 사용자가 C1 선택
+- 결정 (사용자): 사유 5개(상품 미수령, 상태 기록과 다름, 배송 중 파손, 가품 의심, 기타), 사진 선택 최대 3장, 설명은 "기타"일 때만 필수(최대 500자) → proposal.md D15·FR-06 추가
+- 구현 (설계 architecture.md 6.8, 컨트랙트 변경 없음)
+  - `lib/domain/dispute.ts`(사유 목록·입력 확인·기록 해석·꼬리표 값), `lib/domain/upload.ts`에 업로드 용도 `dispute`(서명 문장에 거래 번호)
+  - `lib/upload/auth.ts`: `dispute` 권한 확인(구매자, LOCKED, 기한 전), `verifyDisputeAuth`. `lib/upload/dispute.ts`(기록 작성), `POST /api/ipfs/dispute`. 사진은 기존 `/api/ipfs/images`
+  - `lib/ipfs/pinata.ts`: 업로드 꼬리표(`keyvalues`), `findFilesByKeyvalues`(파일 목록 검색). `lib/data/ipfs/disputeRecords.ts`(최근 유효 기록)
+  - 화면: 거래 상세 구매자 "분쟁 제기" → `DisputeForm`(사유·설명·사진 → 서명 → 업로드 → `openDispute`), `components/dispute/DisputeRecordView`를 관리자 분쟁 목록과 분쟁 중인 거래 상세에 표시
+- 검증
+  - `npm run lint`, `npm run build` 통과
+  - 단위 확인 12건 통과 (scratchpad, esbuild): 사유 없음·"기타"+설명 없음·501자 거부, 다른 거래·다른 구매자·없는 사유·사진 4장·CID 아닌 사진 기록 거부, 주소 대소문자 무시, 꼬리표 값
+  - `POST /api/ipfs/dispute` 거부 9건 통과 (사용자 dev 서버, Sepolia, 임의 지갑 서명): JSON 아님 400, 거래 번호 없음 400, 서명 없음 401, 다른 주소·다른 거래 번호로 서명 401, 만료 401, 없는 거래 400, 구매자 아님 403, 큰 요청 413
+- 미검증 (숨기지 않음)
+  - 실제 업로드·검색: Pinata `keyvalues` 업로드 형식(JSON 문자열)과 `metadata[키]=값` 검색 형식은 공식 문서의 스키마로 정했고 실제 요청으로 확인하지 않음. 현재 `PINATA_JWT`에 Files 읽기 권한이 있는지 모름 (사용자 확인 필요). 권한이 없으면 화면에 "분쟁 사유 기록을 불러오지 못했습니다"가 나오고 서버 로그에 `[pinata] 검색 실패 HTTP 403`이 남음
+- 사용자 MetaMask 확인 (2026-11-28, Sepolia): 분쟁 사유 입력·제기, 관리자 화면·거래 상세의 사유 표시 정상 (사용자 보고 "잘 작동"). 실제 업로드·꼬리표 검색이 동작했으므로 위 Pinata 형식·권한 미검증 항목도 해소
+
+### R3-1 도메인 함수 단위 테스트 (2026-11-28)
+
+- 배경: 컨트랙트는 테스트 127개(BSideEscrow 74, BSideNFT 53)로 예외 상황이 충분하지만, 앱 쪽은 단계마다 scratchpad 임시 스크립트로만 확인하고 저장소에 남기지 않았음
+- 구현: 루트 `npm test` (`tsx --test`, 개발용 패키지 `tsx` 추가), `tests/domain/` 6개 파일 + 공용 값 `fixtures.ts`
+  - `policy.test.ts`: 판매 가격 규칙(최초 판매·상한·제한 없음), 상한 경계(정확히 상한 / +1 wei), 정책 수치 경계, 최초 판매 표시 상태
+  - `format.test.ts`: ETH 변환(1 wei, 19자리 거부, 왕복), 주소 비교·형식, 활동명 64바이트(한글 21/22자)
+  - `upload.test.ts`: 서명 문장 고정값·용도별·값이 다르면 다른 문장, 상태 입력(개봉 여부 미선택 거부), 사진 장수·형식·크기, 메타데이터 입력·상품 이름, CID 형식
+  - `condition.test.ts`: 상태 기록 해석(이전 형식·aiAssisted·최초 판매·잘못된 형식 8종), 거래와 어긋남 경고, 모순 경고 비교 대상과 규칙
+  - `dispute.test.ts`: 사유 5개, "기타"만 설명 필수, 500자·사진 3장 경계, 다른 거래·NFT·구매자·잘못된 형식 기록 거부, 꼬리표 값
+  - `historyFacts.test.ts`: 건수·가격 변화·모순 경고·캐시 키, 없는 숫자 찾기
+- 검증: `npm test` **66건 통과**, `npm run lint`, `npm run build` 통과
+
+### R3-2 트랜잭션 오류 안내 문구 테스트 (2026-11-28)
+
+- 구현
+  - `npm run test:tx` (`tests/tx/txErrors.integration.ts`, `localNode.ts`): 포트 8546에 Hardhat 노드를 자동으로 띄우고 컨트랙트를 새로 배포해 실패 호출 9묶음을 실행, 끝나면 노드 종료. `deployment.json`은 건드리지 않음
+    - 발행 권한 없음, 활동명 빈칸, 정책 수치 범위, 빈 URI / 승인 없이 판매 등록(에스크로 안에서 난 NFT 오류), 최초 판매가 불일치, 소유자 아님, 빈 CID / 본인 상품 구매, 결제 금액 다름, 없는 거래
+    - LOCKED: 기한 전 정산 청구, 구매자의 환불, 판매자의 분쟁 제기, 분쟁 없는 중재 / DISPUTED: 판매자 환불·수령 승인·중복 분쟁 불가, 관리자 아닌 중재, 중복 중재 / 기한 경과 후 분쟁 제기
+    - 재판매 상한 초과, 출금할 금액 없음, 잔액 부족, MetaMask가 감싼 오류(revert data 재해석), 서명 거부(4001)
+  - `npm test`에 `tests/tx/txErrorCoverage.test.ts`: ABI의 custom error 전체(에스크로·NFT)에 한국어 문구가 있는지
+- 테스트로 찾아 고친 문제 (2건)
+  - 잔액 부족 문구가 나오지 않음: Hardhat 노드의 "Sender doesn't have enough funds" 오류를 ethers가 분류하지 못해 "트랜잭션 실패: could not coalesce error"로 표시됨 → 감싸진 오류 메시지에서 `insufficient funds` / `enough funds`도 찾도록 `lib/tx/errors.ts` 수정
+  - 한국어 문구가 없는 custom error 8개 (`AccessControlBadConfirmation`, `ZeroConfirmPeriod`, `EscrowAlreadySet`, `ERC721InvalidOwner`·`Sender`·`Receiver`·`Operator` 등): 화면에서는 거의 나오지 않지만 문구 추가
+- 참고: 테스트 작성 중 ethers가 같은 요청의 결과를 250ms 동안 재사용해, 승인 전 실패한 `list`와 똑같은 요청이 승인 후에도 실패로 보이는 현상이 있었음 (앱 문제 아님, 테스트 연결에서 `cacheTimeout: -1`). 브라우저에서는 MetaMask 경유라 해당 없음
+- 검증: `npm run test:tx` **9건 통과**, `npm test` **107건 통과** (도메인 66 + 오류 문구 41), `npm run lint`, `npm run build` 통과. 테스트 후 8546 노드 종료 확인
+
+### R3-3 업로드·AI·권한 API 거부 테스트 (2026-11-28)
+
+- 구현: `npm run test:api` (`tests/api/uploadApi.integration.ts`). 실행 중인 서버에 요청하며 기본 `localhost:3000`, 다른 주소는 `API_BASE_URL`. 서버에 연결하지 못하면 안내 문구 출력
+  - 임의 지갑으로 서명하므로 모든 요청이 Pinata 업로드·Gemini 호출 전에 거부되어야 함 (성공 응답이 나오면 실패)
+  - 공통 서명 확인: JSON 아님, 서명 없음, 주소·NFT 번호 형식, 다른 지갑 주소, 서명과 다른 NFT 번호, 다른 체인, 다른 용도 서명 재사용, 만료·미래 시각, 요청 크기
+  - API별: 상태 기록(없는 NFT, 소유자 아님), 메타데이터(아티스트 아님), 사진(multipart 아님, 없는 용도, 용도별 권한 3종, 4MB 초과), 분쟁 사유(거래 번호 없음·불일치, 상태 기록 서명 재사용, 없는 거래, 구매자 아님), AI 초안(multipart 아님, 서명 없음, 소유자 아님, 없는 NFT, 크기), AI 요약(번호 오류 5종, 없는 NFT, 크기), 권한 조회(주소 형식, 임의 지갑)
+- 검증: **32건 통과** (Sepolia 설정의 개발 서버를 포트 3123에 따로 띄워 실행, 사용자 서버가 꺼져 있었음. 끝난 뒤 종료). NFT #1·거래 #1이 있어 권한 없음은 모두 403으로 확인. 서버 로그에 Pinata·Gemini 호출 없음
+- 다루지 않음 (숨기지 않음): 권한이 있는 지갑이 필요한 형식 검사(사진 바이트 판별 415, 상태 입력·메타데이터·분쟁 사유 내용 확인). 해당 확인 함수는 R3-1 단위 테스트가 다룸
+
+### R3-4 비밀값 노출 점검 (2026-11-28)
+
+- 구현: `npm run check:secrets` (`scripts/check-secrets.ts`, 빌드 후 실행, 문제가 있으면 종료 코드 1). 검사 항목은 architecture.md 9장
+- `.env.local`을 읽지 않고 형식으로만 찾는다 (CLAUDE.md 규칙 12). 실제 값 비교 모드는 사용자가 직접 실행할 수 있게 남김 (값 출력 없음)
+- 검증
+  - 현재 빌드: **노출 없음** (브라우저 파일 21개, 서버 빌드 432개, 저장소 파일 161개). 소스에 `NEXT_PUBLIC_` 없음
+  - 감지 확인: 가짜 JWT·Google API 키·환경 변수 이름·Pinata 주소를 넣은 임시 파일을 `.next/static`에 두면 4건 모두 검출, 가짜 값으로 실제 값 비교 모드 검출 확인 후 임시 파일 삭제
+  - `npm run lint`, `npm run build`, `npm test` 107건 통과
+- 참고: 브라우저 파일에 64자리 16진수가 몇 개 있으나 ethers 라이브러리의 상수(타원 곡선 값 등)라 개인키 형식 검사는 넣지 않음. 앱에는 개인키가 없다 (배포 키는 Hardhat keystore, 7장)
 
 ## Phase 3 — 확장 기능
 
@@ -489,3 +578,10 @@
 | 2026-11-28 | 권한별 메뉴·화면 표시 구현 (관리자 메뉴·화면은 관리자, 발행은 승인된 아티스트만). 편의 기능이며 보안은 컨트랙트 |
 | 2026-11-28 | 판매 목록 카드: 토큰·거래 번호 대신 상품 이름(메타데이터 name) 표시 |
 | 2026-11-28 | A3 AI 거래 이력 요약 구현: 사실 목록은 코드 계산, 없는 숫자 거부, 경고 누락 보완, 메모리 캐시·1분 10회 제한. 단위 8건·API 9건 통과. 실제 AI 호출은 키 등록 후 확인 |
+| 2026-11-28 | Phase 2 R1: 거래 상세에 판매자 전액 환불·구매자 분쟁 제기 버튼 추가 (컨트랙트 변경 없음) |
+| 2026-11-28 | Phase 2 R2: 관리자 화면에 분쟁 중재(구매자 환불 / 판매자 정산) 추가, `getDisputedListings` |
+| 2026-11-28 | D15 분쟁 사유 기록 추가 (사용자 결정 C1안: IPFS + Pinata 꼬리표 검색, 컨트랙트 변경 없음). 사유 5개·사진 선택 3장·"기타"만 설명 필수 |
+| 2026-11-28 | Phase 2 R3-1: 도메인 함수 단위 테스트 66건 추가 (`npm test`, node:test + tsx) |
+| 2026-11-28 | Phase 2 R3-2: 트랜잭션 오류 문구 테스트(`npm run test:tx` 9건, 문구 누락 확인 41건). 잔액 부족 문구 인식 보완, 누락 문구 8개 추가 |
+| 2026-11-28 | Phase 2 R3-3: 업로드·AI·권한 API 거부 테스트 32건 (`npm run test:api`) |
+| 2026-11-28 | Phase 2 R3-4: 비밀값 노출 점검 스크립트 (`npm run check:secrets`), 현재 빌드 노출 없음. Phase 2 완료 |
