@@ -1,18 +1,19 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { TxButton } from "@/components/tx/TxButton";
 import { NetworkGuard } from "@/components/wallet/NetworkGuard";
 import { useNow } from "@/hooks/useNow";
 import { formatEth, formatTimestamp, isSameAddress } from "@/lib/domain/format";
 import type { Listing } from "@/lib/domain/types";
-import { buy, cancelListing, claimAfterTimeout, confirmReceipt, openDispute, refundBySeller } from "@/lib/tx/escrow";
+import { buy, cancelListing, claimAfterTimeout, confirmReceipt, refundBySeller } from "@/lib/tx/escrow";
+import { DisputeForm } from "./DisputeForm";
 
 /**
  * 거래 상세의 상태·역할별 거래 버튼 (architecture.md 4.3)
  * - LISTED: 판매자 → 등록 취소 / 그 외 → 구매
- * - LOCKED: 구매자 → 수령 승인, 기한 전 분쟁 제기 (D5) / 판매자 → 기한 경과 후 정산 청구, 전액 환불 (D4)
+ * - LOCKED: 구매자 → 수령 승인, 기한 전 분쟁 제기 (D5, 사유 기록 D15) / 판매자 → 기한 경과 후 정산 청구, 전액 환불 (D4)
  * - DISPUTED: 안내만 (중재는 /admin, 관리자)
  * 버튼 노출은 안내용이며 최종 검증은 컨트랙트가 한다.
  */
@@ -86,12 +87,13 @@ function Actions({ listing, account }: { listing: Listing; account: string }) {
   return <Note>다른 구매자가 구매한 거래입니다.</Note>;
 }
 
-/** 구매자: 수령 승인, 기한 전 분쟁 제기 (D5). 기한이 지나면 분쟁 버튼을 비활성화한다. */
+/** 구매자: 수령 승인, 기한 전 분쟁 제기 (D5·D15). 기한이 지나면 분쟁 버튼을 비활성화한다. */
 function BuyerLockedActions({ listing }: { listing: Listing }) {
   const now = useNow();
   const deadline = listing.deadline;
   // 시각을 모르는 동안(hydration 직후)은 비활성. 판정 기준은 블록 시각이며 최종 판정은 컨트랙트가 한다
   const canDispute = now !== null && deadline !== null && now < deadline;
+  const [disputeOpen, setDisputeOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,15 +112,18 @@ function BuyerLockedActions({ listing }: { listing: Listing }) {
         )}
       </div>
       <div className="flex flex-col gap-2">
-        <TxButton
-          label="분쟁 제기"
-          variant="secondary"
-          disabled={!canDispute}
-          confirmMessage={
-            "받은 상품이 상태 기록과 다르거나 받지 못했나요?\n분쟁을 제기하면 자동 정산이 보류되고, 관리자가 구매자 환불 또는 판매자 정산 중 하나로 결정합니다. 제기 후에는 철회할 수 없습니다."
-          }
-          steps={[{ label: "분쟁 제기", send: (s) => openDispute(s, listing.listingId) }]}
-        />
+        {disputeOpen && canDispute ? (
+          <DisputeForm listingId={listing.listingId} onCancel={() => setDisputeOpen(false)} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setDisputeOpen(true)}
+            disabled={!canDispute}
+            className="self-start rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            분쟁 제기
+          </button>
+        )}
         <p className="text-xs text-zinc-500">
           {deadline !== null && now !== null && !canDispute
             ? "수령 승인 기한이 지나 분쟁을 제기할 수 없습니다."

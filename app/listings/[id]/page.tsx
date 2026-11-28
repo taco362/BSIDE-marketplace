@@ -5,8 +5,10 @@ import { ListingStatusBadge } from "@/components/listing/ListingStatusBadge";
 import { TokenSummary } from "@/components/token/TokenSummary";
 import { ConditionHistoryWarnings } from "@/components/condition/ConditionHistoryWarnings";
 import { ConditionRecordFallback, ConditionRecordView } from "@/components/condition/ConditionRecordView";
+import { DisputeRecordFallback, DisputeRecordView } from "@/components/dispute/DisputeRecordView";
 import { getMarketReader } from "@/lib/data";
 import { getConditionRecord, getPriorConditions } from "@/lib/data/ipfs/conditionRecords";
+import { getDisputeRecord } from "@/lib/data/ipfs/disputeRecords";
 import { formatEth } from "@/lib/domain/format";
 import { ListingActions } from "./_components/ListingActions";
 import { ListingInfo } from "./_components/ListingInfo";
@@ -60,6 +62,18 @@ async function ListingDetail({ params }: Pick<PageProps<"/listings/[id]">, "para
         </div>
         <ListingActions listing={listing} />
       </section>
+
+      {listing.status === "DISPUTED" && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">분쟁 사유</h2>
+          <p className="text-sm text-zinc-500">구매자가 분쟁을 제기할 때 남긴 기록이며, 관리자 중재의 근거가 됩니다.</p>
+          <div className="max-w-xl">
+            <Suspense fallback={<DisputeRecordFallback />}>
+              <DisputeRecordView result={getDisputeRecord(listing)} />
+            </Suspense>
+          </div>
+        </section>
+      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">거래 정보</h2>

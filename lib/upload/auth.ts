@@ -4,14 +4,15 @@ import "server-only";
  * 업로드 확인: 서명·유효 시간·권한 (docs/architecture.md 6.3, proposal.md D12)
  * 1. 요청 값으로 서명 문장을 다시 만들어 서명자를 복원하고 address와 비교한다.
  * 2. 서명 시각이 유효 시간 안인지 확인한다.
- * 3. 체인에서 권한을 확인한다: condition → NFT 현재 소유자, metadata → 승인된 아티스트.
+ * 3. 체인에서 권한을 확인한다: condition → NFT 현재 소유자, metadata → 승인된 아티스트,
+ *    dispute → 거래의 구매자 (LOCKED, 수령 승인 기한 전, D5·D15).
  */
 import { verifyMessage } from "ethers";
 import { DEPLOYMENT } from "@/lib/contracts";
 import { getMarketReader } from "@/lib/data";
 import { accountOf } from "@/lib/domain/account";
 import { isSameAddress } from "@/lib/domain/format";
-import type { Token } from "@/lib/domain/types";
+import type { ListingWithToken, Token } from "@/lib/domain/types";
 import {
   UPLOAD_AUTH_MAX_AGE_SECONDS,
   UPLOAD_AUTH_MAX_SKEW_SECONDS,
@@ -32,6 +33,7 @@ export function readAuthFields(get: (key: string) => unknown): UploadAuth {
   const issuedAt = Number(get("issuedAt"));
   const signature = get("signature");
   const rawTokenId = get("tokenId");
+  const rawListingId = get("listingId");
 
   if (typeof purpose !== "string" || !(UPLOAD_PURPOSES as readonly string[]).includes(purpose)) {
     throw new UploadError(400, "업로드 용도가 올바르지 않습니다.");
@@ -50,9 +52,15 @@ export function readAuthFields(get: (key: string) => unknown): UploadAuth {
     tokenId = Number(rawTokenId);
     if (!Number.isSafeInteger(tokenId) || tokenId <= 0) throw new UploadError(400, "NFT 번호가 올바르지 않습니다.");
   }
+  let listingId: number | null = null;
+  if (purpose === "dispute") {
+    listingId = Number(rawListingId);
+    if (!Number.isSafeInteger(listingId) || listingId <= 0) throw new UploadError(400, "거래 번호가 올바르지 않습니다.");
+  }
   return {
     purpose: purpose as UploadAuth["purpose"],
     tokenId,
+    listingId,
     address,
     chainId: DEPLOYMENT.chainId,
     issuedAt,
@@ -81,10 +89,30 @@ function verifyFreshness(issuedAt: number, nowSeconds: number): void {
   }
 }
 
-/** condition 용도면 확인에 쓴 NFT 정보를, metadata 용도면 null을 돌려준다 */
-async function verifyPermission(auth: UploadAuth): Promise<Token | null> {
+/** dispute: 연결 계정이 이 거래의 구매자이고, 분쟁을 제기할 수 있는 상태(LOCKED, 기한 전)인지 확인한다 */
+async function verifyDisputePermission(auth: UploadAuth, nowSeconds: number): Promise<ListingWithToken> {
+  const item = await getMarketReader().getListing(auth.listingId as number);
+  if (!item) throw new UploadError(400, `거래 #${auth.listingId}이(가) 없습니다.`);
+  const { listing } = item;
+  if (!isSameAddress(listing.buyer, auth.address)) {
+    throw new UploadError(403, "이 거래의 구매자만 분쟁 사유를 올릴 수 있습니다.");
+  }
+  if (listing.status !== "LOCKED") throw new UploadError(403, "구매 후 수령 승인을 기다리는 거래만 분쟁을 제기할 수 있습니다.");
+  // 최종 판정은 컨트랙트(블록 시각)가 한다. 여기서는 기한이 지난 뒤 기록만 남는 것을 막는다
+  if (listing.deadline !== null && nowSeconds >= listing.deadline) {
+    throw new UploadError(403, "수령 승인 기한이 지나 분쟁을 제기할 수 없습니다.");
+  }
+  return item;
+}
+
+/** condition 용도면 확인에 쓴 NFT 정보를, 그 외 용도면 null을 돌려준다 */
+async function verifyPermission(auth: UploadAuth, nowSeconds: number): Promise<Token | null> {
   const reader = getMarketReader();
   try {
+    if (auth.purpose === "dispute") {
+      await verifyDisputePermission(auth, nowSeconds);
+      return null;
+    }
     if (auth.purpose === "condition") {
       const token = await reader.getToken(auth.tokenId as number);
       if (!token) throw new UploadError(400, `NFT #${auth.tokenId}이(가) 없습니다.`);
@@ -116,5 +144,22 @@ export async function verifyUploadAuth(
 ): Promise<Token | null> {
   verifySignature(auth);
   verifyFreshness(auth.issuedAt, nowSeconds);
-  return verifyPermission(auth);
+  return verifyPermission(auth, nowSeconds);
+}
+
+/** dispute 용도 전용: 서명 → 유효 시간 → 구매자 확인 후 거래 정보를 돌려준다 (사유 기록 작성에 사용) */
+export async function verifyDisputeAuth(
+  auth: UploadAuth,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<ListingWithToken> {
+  if (auth.purpose !== "dispute") throw new UploadError(400, "업로드 용도가 올바르지 않습니다.");
+  verifySignature(auth);
+  verifyFreshness(auth.issuedAt, nowSeconds);
+  try {
+    return await verifyDisputePermission(auth, nowSeconds);
+  } catch (error) {
+    if (error instanceof UploadError) throw error;
+    console.error("[upload] 권한 확인 중 블록체인 조회 실패", error);
+    throw new UploadError(502, "블록체인 조회에 실패해 권한을 확인하지 못했습니다. 잠시 후 다시 시도하세요.");
+  }
 }

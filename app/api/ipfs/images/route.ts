@@ -1,6 +1,6 @@
 /**
  * 사진 1장 업로드 (docs/architecture.md 6.3, proposal.md D11·D12)
- * multipart: file, purpose(condition|metadata), tokenId(condition일 때), address, issuedAt, signature
+ * multipart: file, purpose(condition|metadata|dispute), tokenId(condition일 때), listingId(dispute일 때), address, issuedAt, signature
  * 응답: 200 { cid } / 오류 { error } + 상태 코드
  */
 import { IMAGE_EXTENSIONS } from "@/lib/domain/upload";
@@ -29,7 +29,8 @@ export async function POST(request: Request) {
     const { bytes, type } = await readImage(file);
 
     // 사용자 파일 이름 대신 서버가 정한 이름을 쓴다 (원본 파일 이름의 개인정보 노출 방지)
-    const subject = auth.tokenId !== null ? `-token${auth.tokenId}` : "";
+    const subject =
+      auth.tokenId !== null ? `-token${auth.tokenId}` : auth.listingId !== null ? `-listing${auth.listingId}` : "";
     const name = `${auth.purpose}${subject}-${Date.now()}.${IMAGE_EXTENSIONS[type]}`;
     const cid = await uploadFile(bytes, name, type);
 

@@ -143,14 +143,17 @@ export const UPLOAD_AUTH_MAX_SKEW_SECONDS = 60;
  * 업로드 용도 (D12)
  * - condition: 판매 등록용 상품 상태 기록 → 해당 NFT의 현재 소유자만
  * - metadata: 발행용 메타데이터 → 승인된 아티스트만
+ * - dispute: 분쟁 사유 기록·사진 (D15) → 해당 거래의 구매자만, 구매 후 수령 승인 기한 전
  */
-export const UPLOAD_PURPOSES = ["condition", "metadata"] as const;
+export const UPLOAD_PURPOSES = ["condition", "metadata", "dispute"] as const;
 export type UploadPurpose = (typeof UPLOAD_PURPOSES)[number];
 
 export interface UploadAuthFields {
   purpose: UploadPurpose;
-  /** condition일 때 필수, metadata일 때 null */
+  /** condition일 때 필수, 그 외 null */
   tokenId: number | null;
+  /** dispute일 때 필수, 그 외 null */
+  listingId: number | null;
   address: string;
   chainId: number;
   /** 서명 시각 (unix 초) */
@@ -162,7 +165,12 @@ export interface UploadAuthFields {
  * 서버는 요청 값으로 같은 문장을 다시 만들어 서명자를 확인하므로, 이 함수의 출력이 바뀌면 이전 서명은 무효가 된다.
  */
 export function buildUploadMessage(f: UploadAuthFields): string {
-  const purpose = f.purpose === "condition" ? `상품 상태 기록 (NFT #${f.tokenId})` : "NFT 발행 메타데이터";
+  const purpose =
+    f.purpose === "condition"
+      ? `상품 상태 기록 (NFT #${f.tokenId})`
+      : f.purpose === "dispute"
+        ? `분쟁 사유 기록 (거래 #${f.listingId})`
+        : "NFT 발행 메타데이터";
   return [
     "B-SIDE 업로드 확인",
     `용도: ${purpose}`,

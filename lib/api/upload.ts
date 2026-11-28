@@ -5,10 +5,12 @@
  * - uploadCondition: 상태 정보 + 사진 CID → POST /api/ipfs/condition → 상태 기록 CID
  * - uploadPrimaryCondition: 최초 판매는 입력 없이 같은 API → 서버가 작성한 상태 기록 CID
  * - uploadMetadata: 이름·설명 + 대표 이미지 CID → POST /api/ipfs/metadata → 메타데이터 CID
+ * - signDisputeAuth / uploadDispute: 분쟁 사유 + 사진 CID → POST /api/ipfs/dispute → 분쟁 사유 기록 CID (D15)
  * Pinata 키는 서버에만 있다. 브라우저는 우리 서버 API만 호출한다.
  */
 import type { Signer } from "ethers";
 import { DEPLOYMENT } from "@/lib/contracts";
+import type { DisputeReason } from "@/lib/domain/dispute";
 import { UserFacingError } from "@/lib/domain/errors";
 import {
   buildUploadMessage,
@@ -22,6 +24,7 @@ export class UploadRequestError extends UserFacingError {}
 export interface SignedUploadAuth {
   purpose: UploadPurpose;
   tokenId: number | null;
+  listingId: number | null;
   address: string;
   issuedAt: number;
   signature: string;
@@ -31,12 +34,18 @@ export async function signUploadAuth(
   signer: Signer,
   purpose: UploadPurpose,
   tokenId: number | null,
+  listingId: number | null = null,
 ): Promise<SignedUploadAuth> {
   const address = await signer.getAddress();
   const issuedAt = Math.floor(Date.now() / 1000);
-  const message = buildUploadMessage({ purpose, tokenId, address, chainId: DEPLOYMENT.chainId, issuedAt });
+  const message = buildUploadMessage({ purpose, tokenId, listingId, address, chainId: DEPLOYMENT.chainId, issuedAt });
   const signature = await signer.signMessage(message);
-  return { purpose, tokenId, address, issuedAt, signature };
+  return { purpose, tokenId, listingId, address, issuedAt, signature };
+}
+
+/** 분쟁 사유 업로드 확인 서명 (거래의 구매자, D15) */
+export function signDisputeAuth(signer: Signer, listingId: number): Promise<SignedUploadAuth> {
+  return signUploadAuth(signer, "dispute", null, listingId);
 }
 
 async function readResult(response: Response): Promise<string> {
@@ -60,6 +69,7 @@ export async function uploadImage(file: File, auth: SignedUploadAuth): Promise<s
   form.append("file", file);
   form.append("purpose", auth.purpose);
   if (auth.tokenId !== null) form.append("tokenId", String(auth.tokenId));
+  if (auth.listingId !== null) form.append("listingId", String(auth.listingId));
   form.append("address", auth.address);
   form.append("issuedAt", String(auth.issuedAt));
   form.append("signature", auth.signature);
@@ -113,4 +123,22 @@ async function postCondition(auth: SignedUploadAuth, fields: Record<string, unkn
     ...fields,
   });
   return readResult(await post("/api/ipfs/condition", { body, headers: { "Content-Type": "application/json" } }));
+}
+
+/** 분쟁 사유 기록 업로드: 사유·설명 + 사진 CID → 분쟁 사유 기록 CID (이어서 openDispute 호출) */
+export async function uploadDispute(
+  input: { reason: DisputeReason; description: string },
+  images: string[],
+  auth: SignedUploadAuth,
+): Promise<string> {
+  const body = JSON.stringify({
+    listingId: auth.listingId,
+    address: auth.address,
+    issuedAt: auth.issuedAt,
+    signature: auth.signature,
+    reason: input.reason,
+    description: input.description,
+    images,
+  });
+  return readResult(await post("/api/ipfs/dispute", { body, headers: { "Content-Type": "application/json" } }));
 }

@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { AccountLabel } from "@/components/account/AccountLabel";
+import { DisputeRecordFallback, DisputeRecordView } from "@/components/dispute/DisputeRecordView";
 import { ListingTitle, ListingTitleText, fallbackTitle } from "@/components/listing/ListingTitle";
+import { getDisputeRecord } from "@/lib/data/ipfs/disputeRecords";
 import { getTokenName } from "@/lib/data/ipfs/tokenMetadata";
 import { accountOf } from "@/lib/domain/account";
 import { formatEth, formatTimestamp } from "@/lib/domain/format";
@@ -10,7 +12,7 @@ import { ResolveDisputeButtons } from "./ResolveDisputeButtons";
 
 /**
  * 분쟁 중인 거래 목록과 중재 버튼 (D5, architecture.md 6.2)
- * 상품 상태 기록·사진은 거래 상세에서 확인한다. 분쟁 사유는 저장하지 않는다(오프체인, 8.3).
+ * 구매자의 분쟁 사유 기록(D15)을 함께 보인다. 판매자의 상품 상태 기록·사진은 거래 상세에서 확인한다.
  */
 export function DisputeTable({ disputes, accounts }: { disputes: ListingWithToken[]; accounts: AccountDirectory }) {
   if (disputes.length === 0) {
@@ -50,6 +52,11 @@ export function DisputeTable({ disputes, accounts }: { disputes: ListingWithToke
               </>
             )}
           </dl>
+          <div className="max-w-xl">
+            <Suspense fallback={<DisputeRecordFallback />}>
+              <DisputeRecordView result={getDisputeRecord(listing)} />
+            </Suspense>
+          </div>
           <ResolveDisputeButtons listingId={listing.listingId} price={listing.price} />
         </li>
       ))}
