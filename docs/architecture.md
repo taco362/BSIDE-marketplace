@@ -74,6 +74,7 @@ b-side/
 │  ├─ dispute/                    # DisputeRecordView (분쟁 사유 기록 표시, 6.8)
 │  └─ condition/                  # ConditionRecordView (거래별 상품 상태 기록 표시, 6.6), ConditionHistoryWarnings (모순 경고, 6.7)
 ├─ tests/domain/                  # 도메인 함수 단위 테스트 (node:test + tsx, `npm test`, 9장)
+├─ tests/tx/                      # 트랜잭션 오류 문구: 오류 문구 누락 확인(`npm test`), 로컬 노드 실제 호출(`npm run test:tx`, 9장)
 ├─ hooks/                         # 클라이언트 상태 훅
 │  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (모듈 단위 저장소 + useSyncExternalStore, 6.5)
 │  ├─ useAccountRoles.ts         # 연결 지갑의 권한 (메뉴 표시용, 6.5)
@@ -862,6 +863,8 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 
 프론트엔드:
 - `npm test`: `lib/domain` 순수 함수 단위 테스트 (`tests/domain/*.test.ts`, Node 내장 `node:test` + `tsx`, 블록체인·네트워크 불필요). 가격 규칙·정책 수치 경계, ETH 변환, 활동명 바이트 길이, 업로드 입력 확인, 서명 문장(용도·번호·체인·시각별로 달라짐), 상태 기록 해석, 모순 경고, 분쟁 사유 입력·기록 해석, AI 요약 사실 목록·숫자 확인
+- `npm test`의 `tests/tx/txErrorCoverage.test.ts`: 두 컨트랙트 ABI의 모든 custom error에 한국어 문구가 있는지 (MetaMask가 감싼 오류 모양으로 확인)
+- `npm run test:tx`: 포트 8546에 Hardhat 노드를 띄우고 `contracts/artifacts` 바이트코드로 새로 배포해, 일부러 실패하는 호출의 오류를 `toTxErrorMessage`에 넣어 문구를 확인한다 (권한·입력·가격 규칙·상태별 거부·기한 경계·중복 중재·잔액 부족·MetaMask가 감싼 오류). `deployment.json`은 건드리지 않는다. ethers의 같은 요청 결과 재사용(`cacheTimeout`)을 끈다
 - `npm run lint`, `npm run build`
 - 비밀값 노출 점검: 빌드 후 `.next/static`(브라우저로 전달되는 파일)에서 `RPC_URL`, `PINATA_JWT` 값이 검색되지 않는지 확인
 - CID 점검: 시연에 사용하는 메타데이터·상태 기록 CID가 공개 게이트웨이에서 조회되는지 발행·등록 전에 확인

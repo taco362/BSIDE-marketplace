@@ -8,7 +8,7 @@
 
 - **단계**: Phase 1 완료 (7단계 Sepolia 배포·시연 확인, 2026-11-27). Phase 2 업로드 U1~U4 완료. AI 보조 기능 A1~A3 완료·`main` 병합 (D14, 교수님 피드백 반영, 2026-11-28)
 - **최근 완료**: 권한별 메뉴·화면 표시, 판매 목록 카드 상품 이름 표시 (사용자 화면 확인, `main` 병합 2026-11-28)
-- **진행 중**: Phase 2 R3 예외 상황 테스트 보강 — R3-1 도메인 단위 테스트 완료, 다음 R3-2 트랜잭션 오류 안내 문구 (브랜치 `feature/dispute-refund`)
+- **진행 중**: Phase 2 R3 예외 상황 테스트 보강 — R3-1·R3-2 완료, 다음 R3-3 업로드 API 거부 테스트 스크립트 (브랜치 `feature/dispute-refund`)
 - **다음 작업**: R3 예외 상황 테스트 보강
 - **시연 주소**: https://bside-marketplace.vercel.app (Sepolia)
 - **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결 + 거래 화면 (관리자, 발행, 판매 등록, 구매·수령 승인·정산 청구·등록 취소, 내 거래·출금)
@@ -246,7 +246,7 @@
 | R1 | 판매자 환불, 분쟁 제기 화면 (거래 상세) | 판매자 환불·구매자 분쟁 제기 후 상태 변경 확인 | ☑ 완료 (사용자 화면 확인) |
 | R2 | 관리자 분쟁 중재 화면 (`/admin`) | 분쟁 목록 표시, 두 결과 각각 처리 확인 | ☑ 완료 (사용자 화면 확인) |
 | R2b | 분쟁 사유 기록 (D15): 사유·설명·사진 → IPFS, 관리자 화면·거래 상세 표시 | 사유 기록 후 분쟁 제기, 관리자 화면에 사유 표시 | ☑ 완료 (사용자 화면 확인) |
-| R3 | 예외 상황 테스트 보강 (사용자 결정: R3-1 도메인 단위 테스트, R3-2 트랜잭션 오류 안내 문구, R3-3 업로드 API 거부 테스트 스크립트, R3-4 비밀값 노출 점검) | 각 테스트가 저장소에 남고 통과 | ◐ R3-1 완료 |
+| R3 | 예외 상황 테스트 보강 (사용자 결정: R3-1 도메인 단위 테스트, R3-2 트랜잭션 오류 안내 문구, R3-3 업로드 API 거부 테스트 스크립트, R3-4 비밀값 노출 점검) | 각 테스트가 저장소에 남고 통과 | ◐ R3-1·R3-2 완료 |
 
 ### AI 보조 기능 (D14, 2026-11-27 추가)
 
@@ -495,6 +495,20 @@
   - `historyFacts.test.ts`: 건수·가격 변화·모순 경고·캐시 키, 없는 숫자 찾기
 - 검증: `npm test` **66건 통과**, `npm run lint`, `npm run build` 통과
 
+### R3-2 트랜잭션 오류 안내 문구 테스트 (2026-11-28)
+
+- 구현
+  - `npm run test:tx` (`tests/tx/txErrors.integration.ts`, `localNode.ts`): 포트 8546에 Hardhat 노드를 자동으로 띄우고 컨트랙트를 새로 배포해 실패 호출 9묶음을 실행, 끝나면 노드 종료. `deployment.json`은 건드리지 않음
+    - 발행 권한 없음, 활동명 빈칸, 정책 수치 범위, 빈 URI / 승인 없이 판매 등록(에스크로 안에서 난 NFT 오류), 최초 판매가 불일치, 소유자 아님, 빈 CID / 본인 상품 구매, 결제 금액 다름, 없는 거래
+    - LOCKED: 기한 전 정산 청구, 구매자의 환불, 판매자의 분쟁 제기, 분쟁 없는 중재 / DISPUTED: 판매자 환불·수령 승인·중복 분쟁 불가, 관리자 아닌 중재, 중복 중재 / 기한 경과 후 분쟁 제기
+    - 재판매 상한 초과, 출금할 금액 없음, 잔액 부족, MetaMask가 감싼 오류(revert data 재해석), 서명 거부(4001)
+  - `npm test`에 `tests/tx/txErrorCoverage.test.ts`: ABI의 custom error 전체(에스크로·NFT)에 한국어 문구가 있는지
+- 테스트로 찾아 고친 문제 (2건)
+  - 잔액 부족 문구가 나오지 않음: Hardhat 노드의 "Sender doesn't have enough funds" 오류를 ethers가 분류하지 못해 "트랜잭션 실패: could not coalesce error"로 표시됨 → 감싸진 오류 메시지에서 `insufficient funds` / `enough funds`도 찾도록 `lib/tx/errors.ts` 수정
+  - 한국어 문구가 없는 custom error 8개 (`AccessControlBadConfirmation`, `ZeroConfirmPeriod`, `EscrowAlreadySet`, `ERC721InvalidOwner`·`Sender`·`Receiver`·`Operator` 등): 화면에서는 거의 나오지 않지만 문구 추가
+- 참고: 테스트 작성 중 ethers가 같은 요청의 결과를 250ms 동안 재사용해, 승인 전 실패한 `list`와 똑같은 요청이 승인 후에도 실패로 보이는 현상이 있었음 (앱 문제 아님, 테스트 연결에서 `cacheTimeout: -1`). 브라우저에서는 MetaMask 경유라 해당 없음
+- 검증: `npm run test:tx` **9건 통과**, `npm test` **107건 통과** (도메인 66 + 오류 문구 41), `npm run lint`, `npm run build` 통과. 테스트 후 8546 노드 종료 확인
+
 ## Phase 3 — 확장 기능
 
 | 작업 | 상태 |
@@ -550,3 +564,4 @@
 | 2026-11-28 | Phase 2 R2: 관리자 화면에 분쟁 중재(구매자 환불 / 판매자 정산) 추가, `getDisputedListings` |
 | 2026-11-28 | D15 분쟁 사유 기록 추가 (사용자 결정 C1안: IPFS + Pinata 꼬리표 검색, 컨트랙트 변경 없음). 사유 5개·사진 선택 3장·"기타"만 설명 필수 |
 | 2026-11-28 | Phase 2 R3-1: 도메인 함수 단위 테스트 66건 추가 (`npm test`, node:test + tsx) |
+| 2026-11-28 | Phase 2 R3-2: 트랜잭션 오류 문구 테스트(`npm run test:tx` 9건, 문구 누락 확인 41건). 잔액 부족 문구 인식 보완, 누락 문구 8개 추가 |
