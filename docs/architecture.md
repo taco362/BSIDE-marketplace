@@ -92,6 +92,7 @@ b-side/
 │  │  ├─ conditionRecord.ts       # 상태 기록 형식 확인, 거래와 어긋남 경고 (6.6)
 │  │  ├─ conditionHistory.ts      # 이전 완료 거래 기록과의 모순 경고 (6.7, A1)
 │  │  ├─ ai.ts                    # AI 사진 크기·요청 크기 상한 (6.7, A2)
+│  │  ├─ metadata.ts              # NFT 메타데이터에서 상품 이름 읽기 (6.1)
 │  │  └─ historyFacts.ts          # AI 이력 요약에 넘길 사실 목록 계산 (6.7, A3)
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
@@ -104,6 +105,7 @@ b-side/
 │  │  ├─ chain/artists.ts         # ArtistRegistered 이벤트로 등록된 아티스트 목록 (server-only)
 │  │  ├─ chain/logs.ts            # 이벤트 로그 구간 나누어 조회 (server-only)
 │  │  ├─ ipfs/conditionRecords.ts # 상태 기록 조회 (server-only, 6.6)
+│  │  ├─ ipfs/tokenMetadata.ts    # 상품 이름 조회 (server-only, 6.1 판매 목록 카드)
 │  │  └─ index.ts                 # getMarketReader(): chainReader 반환 (구현체 선택 로직 없음)
 │  ├─ tx/                         # 쓰기 전용 (client), 컨트랙트별로 분리
 │  │  ├─ nft.ts                   # mint, approve(필요할 때만), 아티스트 등록·회수, 발행 영수증에서 토큰 ID 찾기
@@ -440,13 +442,14 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 
 | 화면 | 방법 |
 |---|---|
-| 판매 중 목록 | `getListings`를 50건씩 읽고 `status == LISTED`로 필터 |
+| 판매 중 목록 | `getListings`를 50건씩 읽고 `status == LISTED`로 필터. 카드 제목은 상품 이름(아래) |
 | 거래 상세 | `getListings`로 해당 거래 조회 + 토큰 정보 |
 | 내 NFT | `getTokens`를 50건씩 읽고 `owner == 내 주소`로 필터 |
 | 내 판매·구매 거래 | `getListings`에서 `seller` 또는 `buyer`로 필터 |
 | 분쟁 목록 (관리자) | `getListings`에서 `status == DISPUTED`로 필터 |
 | NFT별 거래 이력 | 해당 `tokenId` 이벤트 로그로 타임라인 구성 (블록 시각, 트랜잭션 해시) |
 
+- 판매 목록 카드의 제목은 NFT 메타데이터의 상품 이름(`name`)이다 (2026-11-28 사용자 결정. 토큰·거래 번호는 카드에서 빼고 거래 상세·토큰 페이지에만 표시한다). `lib/data/ipfs/tokenMetadata.ts`의 `getTokenName(tokenURI)`가 `ipfs://<CID>`일 때만 게이트웨이에서 읽고(6.6과 같은 원칙), `parseTokenName`(`lib/domain/metadata.ts`)이 공백을 정리하고 100자로 제한한다. 페이지는 기다리지 않고 Promise를 넘기고, 카드마다 `<Suspense>`로 따로 표시한다. 이름이 없거나 읽지 못하면 "NFT #n"으로 표시한다. 아티스트·판매자 표시는 그대로 둔다(재판매 카드에서도 창작자를 보여 주기 위함).
 - 현재 상태는 항상 `getListings`의 `status`로 판단한다. 이벤트는 이력 표시에만 사용한다.
 - 무료 RPC는 `eth_getLogs`로 한 번에 조회할 수 있는 블록 범위가 제한된다. 이벤트는 배포 블록부터 구간을 나누어 조회한다. 조회에 실패하면 Listing에 저장된 `listedAt`, `lockedAt`, `closedAt`으로 이력을 대신 표시한다.
 - 전체를 훑는 방식은 거래 수에 비례해 느려진다. MVP 규모(수십~수백 건)에서는 충분하며, 규모가 커지면 PostgreSQL로 전환한다.
