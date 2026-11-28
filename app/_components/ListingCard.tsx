@@ -5,7 +5,7 @@ import { PolicyBadge } from "@/components/token/PolicyBadge";
 import { accountOf } from "@/lib/domain/account";
 import { formatEth, isSameAddress } from "@/lib/domain/format";
 import type { AccountDirectory, ListingWithToken } from "@/lib/domain/types";
-import { ListingTitle, ListingTitleText, fallbackTitle } from "./ListingTitle";
+import { ListingTitle, ListingTitleText, fallbackTitle } from "@/components/listing/ListingTitle";
 
 /**
  * 판매 목록 카드: 상품 이름, 가격, 정책, 아티스트(발행자)와 판매자(현재 등록자)

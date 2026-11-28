@@ -172,4 +172,8 @@ export const chainReader: MarketReader = {
   getArtists: safely(readArtists),
 
   getAdmin: async () => DEPLOYMENT.admin,
+
+  getDisputedListings: safely(async (): Promise<ListingWithToken[]> => {
+    return withTokens((await readAllListings()).filter((l) => l.status === "DISPUTED"));
+  }),
 };

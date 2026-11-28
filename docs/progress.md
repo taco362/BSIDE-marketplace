@@ -8,7 +8,7 @@
 
 - **단계**: Phase 1 완료 (7단계 Sepolia 배포·시연 확인, 2026-11-27). Phase 2 업로드 U1~U4 완료. AI 보조 기능 A1~A3 완료·`main` 병합 (D14, 교수님 피드백 반영, 2026-11-28)
 - **최근 완료**: 권한별 메뉴·화면 표시, 판매 목록 카드 상품 이름 표시 (사용자 화면 확인, `main` 병합 2026-11-28)
-- **진행 중**: Phase 2 R2 관리자 분쟁 중재 화면 (브랜치 `feature/dispute-refund`, R1 완료)
+- **진행 중**: Phase 2 분쟁 사유 기록 (C1안, 브랜치 `feature/dispute-refund`, R1·R2 완료)
 - **다음 작업**: R3 예외 상황 테스트 보강
 - **시연 주소**: https://bside-marketplace.vercel.app (Sepolia)
 - **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결 + 거래 화면 (관리자, 발행, 판매 등록, 구매·수령 승인·정산 청구·등록 취소, 내 거래·출금)
@@ -244,7 +244,7 @@
 | U3 | 발행 메타데이터 업로드: 발행 화면에서 이름·설명·대표 이미지 입력 → 업로드 → `mint` (D13) | 로컬에서 흐름 A 발행 성공 | ☑ 완료 |
 | U4 | 과거 상품 상태 조회: 거래 이력에 거래별 상태 기록 내용과 사진 표시 | 여러 번 거래된 NFT의 거래별 상태 표시 확인 | ☑ 완료 |
 | R1 | 판매자 환불, 분쟁 제기 화면 (거래 상세) | 판매자 환불·구매자 분쟁 제기 후 상태 변경 확인 | ☑ 완료 (사용자 화면 확인) |
-| R2 | 관리자 분쟁 중재 화면 (`/admin`) | 분쟁 목록 표시, 두 결과 각각 처리 확인 | ☐ 대기 |
+| R2 | 관리자 분쟁 중재 화면 (`/admin`) | 분쟁 목록 표시, 두 결과 각각 처리 확인 | ☑ 완료 (사용자 화면 확인) |
 | R3 | 예외 상황 테스트 보강 | 미정 (R2 후 범위 결정) | ☐ 대기 |
 
 ### AI 보조 기능 (D14, 2026-11-27 추가)
@@ -432,7 +432,7 @@
 ### 판매 목록 카드 상품 이름 표시 (2026-11-28, 사용자 요청)
 
 - 요청: 카드의 토큰·거래 번호 대신 무슨 물건인지 이름을 보여 주기. 아티스트·판매자를 한 줄로 합치는 안도 검토했으나, 재판매 카드에서 창작자 정보가 사라지는 문제로 사용자가 유지하기로 결정. 대표 이미지는 넣지 않음 (사용자 결정)
-- 구현: `lib/domain/metadata.ts`(`parseTokenName`), `lib/data/ipfs/tokenMetadata.ts`(`getTokenName`, `ipfs://<CID>`만 요청, 오류 시 null), `app/_components/ListingTitle.tsx`(Suspense 제목, 대체값 "NFT #n"), `ListingCard`에서 번호 줄 제거, `app/page.tsx`에서 카드마다 이름 Promise 전달
+- 구현: `lib/domain/metadata.ts`(`parseTokenName`), `lib/data/ipfs/tokenMetadata.ts`(`getTokenName`, `ipfs://<CID>`만 요청, 오류 시 null), `ListingTitle`(Suspense 제목, 대체값 "NFT #n". 처음 `app/_components/`, R2에서 분쟁 목록과 함께 쓰게 되어 `components/listing/`로 이동), `ListingCard`에서 번호 줄 제거, `app/page.tsx`에서 카드마다 이름 Promise 전달
 - 검증
   - `npm run lint`, `npm run build` 통과
   - `parseTokenName` 9건 통과 (scratchpad): 공백 정리, 빈 이름·공백만·숫자·이름 없음·null·배열·문자열 → null, 150자 → 100자 + 말줄임
@@ -453,6 +453,17 @@
   - `npm run lint`, `npm run build` 통과
   - 세 함수 이름이 배포 ABI(`lib/contracts/abi/BSideEscrow.json`)에 있음 확인. 상태·권한·기한 조건은 3단계 컨트랙트 테스트(판매자 환불 3건, 분쟁 7건, 기한 경계 6건)가 검증
 - 사용자 MetaMask 확인 (2026-11-28, Sepolia): 분쟁 제기·판매자 환불 동작 확인 (사용자 보고 "확인했습니다")
+
+### R2 관리자 분쟁 중재 화면 (2026-11-28)
+
+- 구현 (컨트랙트 변경 없음)
+  - `MarketReader.getDisputedListings()`: 전체 거래에서 DISPUTED만, 거래 ID 오름차순(오래 기다린 거래부터)
+  - `/admin` 맨 위 "분쟁 중재 (n건)" 섹션: `DisputeTable`(상품 이름, 거래 상세 링크, 가격, 판매자·구매자 전체 주소, 구매 시각), `ResolveDisputeButtons`(구매자 환불 / 판매자 정산, 확인 창). 관리자 지갑일 때만 보임(`RoleGate`)
+  - `ListingTitle`을 `app/_components/`에서 `components/listing/`로 이동 (두 곳에서 사용, 3.1 규칙)
+- 검증
+  - `npm run lint`, `npm run build` 통과
+  - 사용자 dev 서버(Sepolia) `/admin` 응답: R1에서 만든 분쟁 거래 #7이 "분쟁 중재 (1건)"으로 실림, 두 버튼 문구 포함
+- 사용자 MetaMask 확인 (2026-11-28, Sepolia 관리자 계정): 중재 정상 동작 (사용자 보고 "정상 작동")
 
 ## Phase 3 — 확장 기능
 
@@ -506,3 +517,4 @@
 | 2026-11-28 | 판매 목록 카드: 토큰·거래 번호 대신 상품 이름(메타데이터 name) 표시 |
 | 2026-11-28 | A3 AI 거래 이력 요약 구현: 사실 목록은 코드 계산, 없는 숫자 거부, 경고 누락 보완, 메모리 캐시·1분 10회 제한. 단위 8건·API 9건 통과. 실제 AI 호출은 키 등록 후 확인 |
 | 2026-11-28 | Phase 2 R1: 거래 상세에 판매자 전액 환불·구매자 분쟁 제기 버튼 추가 (컨트랙트 변경 없음) |
+| 2026-11-28 | Phase 2 R2: 관리자 화면에 분쟁 중재(구매자 환불 / 판매자 정산) 추가, `getDisputedListings` |

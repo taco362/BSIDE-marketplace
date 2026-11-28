@@ -59,7 +59,7 @@ b-side/
 │  ├─ mint/                       # 아티스트 NFT 발행 (page.tsx + _components/MintForm)
 │  ├─ sell/[tokenId]/             # 판매 등록 (page.tsx + _components/SellForm, ConditionFields). NFT 선택은 my의 보유 NFT 목록에서
 │  ├─ my/                         # 출금, 보유 NFT, 판매·구매 거래 (?account=, 6.5) (+ _components/AccountSync, WithdrawPanel, MyTokenList, MyListingsTable)
-│  ├─ admin/                      # 아티스트 등록·활동명 변경·회수 (+ _components/RegisterArtistForm, ArtistTable, RevokeArtistButton). 분쟁 중재는 Phase 2
+│  ├─ admin/                      # 분쟁 중재, 아티스트 등록·활동명 변경·회수 (+ _components/DisputeTable, ResolveDisputeButtons, RegisterArtistForm, ArtistTable, RevokeArtistButton)
 │  ├─ api/account/roles/          # 연결 지갑의 관리자·아티스트 여부 (메뉴 표시용, 6.5)
 │  ├─ api/ipfs/                   # Pinata 업로드 (Phase 2, 6.3): images/route.ts(U1), condition/route.ts(U2), metadata/route.ts(U3)
 │  └─ api/ai/                     # AI 보조 (D14, 6.7): condition-draft/route.ts(A2), token-summary/route.ts(A3)
@@ -67,7 +67,7 @@ b-side/
 │  ├─ ui/                         # 도메인과 무관한 기본 요소 (DetailList, IpfsLink, CopyButton, FormField)
 │  ├─ account/                    # AccountLabel (활동명·인증 표시·축약/전체 주소, D7)
 │  ├─ wallet/                     # ConnectButton (연결·네트워크 전환), NetworkGuard (거래 기능에서만 연결·네트워크 요구), RoleGate (권한 화면 표시, 6.5)
-│  ├─ listing/                    # ListingStatusBadge
+│  ├─ listing/                    # ListingStatusBadge, ListingTitle (상품 이름 제목, 목록 카드·분쟁 목록)
 │  ├─ token/                      # TokenSummary, PolicyBadge
 │  ├─ tx/                         # TxStatus (서명 대기·처리 중·블록 포함 대기·성공·실패 표시), TxButton (입력 없는 단일 동작 버튼)
 │  ├─ upload/                     # PhotoPicker (사진 선택·미리보기, 6.3)
@@ -455,7 +455,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - 전체를 훑는 방식은 거래 수에 비례해 느려진다. MVP 규모(수십~수백 건)에서는 충분하며, 규모가 커지면 PostgreSQL로 전환한다.
 
 구현 세부 (5단계):
-- `MarketReader` 메서드는 화면에서 쓰는 것만 둔다: `getActiveListings`, `getListing`, `getToken`, `getListingsByToken`, `getTokenHistory`, `getAccounts`. 6단계에서 `getTokensByOwner`(내 NFT, 에스크로 예치분 제외), `getListingsByAccount`(판매·구매 거래), `getPendingWithdrawal`(출금 대기액), `getArtists`(등록된 아티스트), `getAdmin`(관리자 주소 = `deployment.json`의 `admin`)을 추가했다. 분쟁 목록은 Phase 2 중재 화면을 만들 때 추가한다.
+- `MarketReader` 메서드는 화면에서 쓰는 것만 둔다: `getActiveListings`, `getListing`, `getToken`, `getListingsByToken`, `getTokenHistory`, `getAccounts`. 6단계에서 `getTokensByOwner`(내 NFT, 에스크로 예치분 제외), `getListingsByAccount`(판매·구매 거래), `getPendingWithdrawal`(출금 대기액), `getArtists`(등록된 아티스트), `getAdmin`(관리자 주소 = `deployment.json`의 `admin`)을 추가했다. Phase 2 중재 화면에서 `getDisputedListings`(DISPUTED 거래, 거래 ID 오름차순)를 추가했다.
 - 아티스트 목록(`chain/artists.ts`): `ArtistRegistered` 이벤트로 등록된 적이 있는 주소를 모으고 현재 활동명·승인 여부를 조회한다. 회수된 아티스트도 포함한다. `grantRole`로만 승인된 주소는 나오지 않는다(4.1, 사용하지 않는 경로). 이벤트 구간 조회는 `chain/logs.ts`를 토큰 이력과 함께 쓴다.
 - Next.js 설정의 Cache Components(`cacheComponents: true`)에서 조회는 **요청 시점에 실행**한다. `chainReader`의 조회 함수는 `connection()`을 먼저 호출하고, 페이지는 조회 컴포넌트를 `<Suspense>`로 감싼다. 따라서 빌드에는 RPC가 필요 없고, 거래 후 `router.refresh()`로 항상 최신 상태를 받는다. `use cache`는 쓰지 않는다.
 - 같은 요청 안의 중복 조회(예: 전체 거래 목록, `confirmPeriod`)는 `React.cache`로 한 번만 실행한다.
@@ -488,17 +488,17 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - Cache Components는 방문했던 화면을 `<Activity>`로 숨겨 클라이언트 상태를 보존한다(최근 3개 라우트). 따라서 거래 결과 표시는 컴포넌트 상태만으로 판단하지 않는다.
   - 판매 등록 완료 표시는 NFT가 실제로 에스크로에 있을 때(`token.inEscrow`)만 보여준다. 취소 후 다시 들어오면 폼이 보인다.
   - 거래 상세의 버튼 영역은 `key`(거래 상태 + 계정)로 묶는다. 상태가 바뀌면 새로 그려서, 이전 동작의 진행·완료 표시가 다음 동작 버튼에 남지 않게 한다.
-- 버튼 노출과 입력 확인(가격 규칙, 정책 수치 범위, CID 형식)은 화면 안내용이며 최종 검증은 컨트랙트가 한다. 되돌릴 수 없는 동작(발행, 구매, 수령 승인, 정산 청구, 등록 취소, 판매자 환불, 분쟁 제기, 승인 회수)은 실행 전에 확인 창을 띄운다.
+- 버튼 노출과 입력 확인(가격 규칙, 정책 수치 범위, CID 형식)은 화면 안내용이며 최종 검증은 컨트랙트가 한다. 되돌릴 수 없는 동작(발행, 구매, 수령 승인, 정산 청구, 등록 취소, 판매자 환불, 분쟁 제기, 분쟁 중재, 승인 회수)은 실행 전에 확인 창을 띄운다.
 
 | 화면 | 동작 (호출자) | 노출 조건 |
 |---|---|---|
-| `/admin` | 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`일 때만 내용 표시, 아니면 안내만 (`RoleGate`, 6.5) |
+| `/admin` | 분쟁 중재 `resolveDispute`(구매자 환불 / 판매자 정산, `ARBITER_ROLE`), 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`일 때만 내용 표시, 아니면 안내만 (`RoleGate`, 6.5) |
 | `/mint` | 업로드 확인 서명 → 대표 이미지·메타데이터 업로드(6.3) → 발행 `mint` (아티스트) | 승인된 아티스트일 때만 폼 표시, 아니면 안내만 (`RoleGate`, 6.5) |
 | `/sell/[tokenId]` | 업로드 확인 서명 → 사진·상태 기록 업로드(6.3, 최초 판매는 서버 자동 작성) → `approve` → `list` (소유자) | 소유자일 때. 가격은 `listingPriceRule`: 최초 판매면 최초 판매가 고정, 정가 보호형 재판매면 상한 안내 |
 | `/listings/[id]` | LISTED: 구매 `buy`(판매자 외) / 등록 취소 `cancelListing`(판매자). LOCKED: 수령 승인 `confirmReceipt`·분쟁 제기 `openDispute`(구매자, 분쟁은 기한 전에만 활성) / 정산 청구 `claimAfterTimeout`(판매자, 기한 전에는 비활성)·전액 환불 `refundBySeller`(판매자, 기한과 무관) | 상태·역할별. DISPUTED·종료 상태는 안내 문구만 |
 | `/my` | 출금 `withdraw` (본인) | 조회 계정과 연결 계정이 같을 때 |
 
-- 판매자 환불(`refundBySeller`)과 분쟁 제기(`openDispute`)는 Phase 2에서 거래 상세에 추가했다. 분쟁 사유·증빙은 저장하지 않는다(DB 없음, 8.3). 중재(`resolveDispute`) 화면은 Phase 2 다음 단계에서 `/admin`에 추가한다.
+- 판매자 환불(`refundBySeller`)과 분쟁 제기(`openDispute`)는 Phase 2에서 거래 상세에, 중재(`resolveDispute`)는 `/admin`에 추가했다. 분쟁 사유·증빙은 저장하지 않는다(DB 없음, 8.3). 중재 목록은 상품 이름·가격·판매자·구매자·구매 시각만 보이고, 상태 기록은 거래 상세 링크로 확인한다.
 
 ### 6.3 IPFS 업로드 흐름 (Phase 2, proposal.md D11~D13)
 
