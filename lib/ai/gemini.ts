@@ -15,8 +15,11 @@ const TIMEOUT_MS = 25_000;
 
 export class AiError extends Error {
   constructor(
-    /** config: 키 없음 / quota: 무료 사용량 초과(429) / failed: 연결·응답 실패 / output: 응답 형식 이상·차단 */
-    readonly kind: "config" | "quota" | "failed" | "output",
+    /**
+     * config: 키 없음 / quota: 무료 사용량 초과(Gemini 429) / busy: 우리 서버의 호출 횟수 제한(rateLimit.ts)
+     * failed: 연결·응답 실패 / output: 응답 형식 이상·차단·확인 실패
+     */
+    readonly kind: "config" | "quota" | "busy" | "failed" | "output",
     message: string,
   ) {
     super(message);

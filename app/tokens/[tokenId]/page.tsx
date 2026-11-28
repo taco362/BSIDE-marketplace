@@ -5,6 +5,7 @@ import { getMarketReader } from "@/lib/data";
 import { getConditionRecord, getPriorConditions } from "@/lib/data/ipfs/conditionRecords";
 import { tradeEventAddresses } from "@/lib/domain/account";
 import { primarySaleState } from "@/lib/domain/policy";
+import { TokenAiSummary } from "./_components/TokenAiSummary";
 import { TokenListingsTable } from "./_components/TokenListingsTable";
 import { TradeTimeline, type ConditionRecordMap, type PriorConditionMap } from "./_components/TradeTimeline";
 
@@ -53,6 +54,11 @@ async function TokenDetail({ params }: Pick<PageProps<"/tokens/[tokenId]">, "par
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">NFT 정보</h2>
         <TokenSummary token={token} accounts={accounts} primarySale={primarySaleState(token, listings)} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">거래 이력 요약</h2>
+        <TokenAiSummary tokenId={token.tokenId} />
       </section>
 
       <section className="flex flex-col gap-3">

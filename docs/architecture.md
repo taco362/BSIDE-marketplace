@@ -112,7 +112,7 @@ b-side/
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
 │  ├─ ipfs/gateway.ts             # 게이트웨이에서 CID의 JSON 읽기 (server-only, 최초 판매 상태 기록·6.6 표시)
 │  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts (server-only, 6.3)
-│  ├─ ai/                         # AI 호출: gemini.ts, errors.ts, conditionDraft.ts(A2), tokenSummary.ts(A3) (server-only, 6.7)
+│  ├─ ai/                         # AI 호출: gemini.ts, errors.ts, conditionDraft.ts(A2), tokenSummary.ts·summaryCache.ts·rateLimit.ts(A3) (server-only, 6.7)
 │  ├─ media/downscale.ts          # 브라우저 사진 축소, AI 초안용 (client, 6.7)
 │  ├─ api/ai.ts                   # 브라우저: AI 초안·요약 요청 (client, 6.7)
 │  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소(Pinata 공개 게이트웨이), CID → URL 변환
@@ -720,10 +720,31 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 | `lib/api/ai.ts` | 브라우저: 초안 요청 (client) |
 | `app/sell/[tokenId]/_components/AiDraftButton.tsx` | 서명 → 초안 요청 → 입력 칸 채우기 (`useTx` 단계) |
 
-#### A3. AI 거래 이력 요약 (구현 예정)
+#### A3. AI 거래 이력 요약
 
-- `lib/domain/historyFacts.ts`가 거래 횟수·가격·상태·A1 경고를 사실 목록으로 계산하고, `lib/ai/tokenSummary.ts`는 그 목록만으로 문장을 쓴다. 사실 목록에 없는 숫자나 판단은 쓰지 않게 한다.
-- `POST /api/ai/token-summary { tokenId }`: 서버가 데이터를 직접 다시 읽는다. 조회 기능이므로 서명은 받지 않는다. 비용을 줄이기 위해 버튼을 눌렀을 때만 호출하고, 같은 서버 인스턴스 안에서 메모리 캐시를 둔다 (인스턴스마다 따로라서 완전하지 않음).
+```
+토큰 페이지 "✨ AI 요약 보기" (지갑 불필요)
+ → POST /api/ai/token-summary { tokenId }
+    서버: 토큰·거래 목록·거래별 상태 기록을 직접 다시 읽음 → 사실 목록 계산(historyFacts)
+          거래 없음 → AI 없이 고정 문장 / 같은 사실의 캐시 있음 → 캐시 / 호출 제한 초과 → 429 / 그 외 Gemini
+    응답 확인: 사실 목록에 없는 숫자 → 거부, 경고 누락 → 정해진 경고 문장 덧붙임
+ ← { summary, ai }
+```
+
+- 사실 목록(`lib/domain/historyFacts.ts`, 순수 함수): 정책·최초 판매가·최초 판매 상태, 거래 등록·완료·취소·진행 중 건수, 완료 거래의 처음·마지막 가격, 거래마다 구분·가격·상태·개봉 여부·하자·AI 초안 활용·A1 경고. 현재 상태는 거래 기록(`Listing.status`) 기준이다(6.1). 주소는 넣지 않는다.
+- AI는 이 목록만 받는다. 목록 안의 판매자 문장(하자 설명)은 지시로 따르지 않게 한다. 시세 평가·구매 권유·단정 표현은 쓰지 않게 한다.
+- 숫자 확인(`unknownNumbers`): 요약에 나온 숫자가 사실 목록에 없으면 요약을 쓰지 않는다(502). 0~10의 정수는 문장 표현("두 번째" 등)을 위해 허용한다.
+- 경고: A1 경고가 있는데 요약에 "확인" 안내가 없으면 정해진 경고 문장을 뒤에 붙인다. 경고 표시를 AI에 맡기지 않는다.
+- 비용 대책: 버튼을 눌렀을 때만 호출한다. 거래가 없으면 AI를 부르지 않는다. 같은 사실 목록(`key`)은 메모리 캐시를 쓴다(`lib/ai/summaryCache.ts`, 최대 200개). 서명 없이 누구나 부를 수 있으므로, 무료 사용량을 한꺼번에 쓰지 못하게 1분당 10회로 제한한다(`lib/ai/rateLimit.ts`, 초과 시 429).
+- 한계: 캐시와 호출 제한은 서버 인스턴스마다 따로 있고 재시작하면 사라진다(DB 없음). 요약은 참고용이며, 화면에 "AI가 작성한 참고용 요약, 기준은 아래 기록"이라고 표시한다.
+
+| 파일 | 역할 |
+|---|---|
+| `lib/domain/historyFacts.ts` | 사실 목록·캐시 키·숫자 확인 (공용) |
+| `lib/ai/tokenSummary.ts` | 프롬프트·응답 확인 (server-only) |
+| `lib/ai/summaryCache.ts`, `lib/ai/rateLimit.ts` | 메모리 캐시, 1분당 호출 제한 (server-only) |
+| `app/api/ai/token-summary/route.ts` | 요청 해석 → 조회 → 사실 → 캐시·제한 → 요약 |
+| `app/tokens/[tokenId]/_components/TokenAiSummary.tsx` | 버튼·요약 표시 (client) |
 
 ## 7. 환경 변수와 비밀값
 
