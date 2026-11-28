@@ -74,6 +74,7 @@ b-side/
 │  ├─ dispute/                    # DisputeRecordView (분쟁 사유 기록 표시, 6.8)
 │  └─ condition/                  # ConditionRecordView (거래별 상품 상태 기록 표시, 6.6), ConditionHistoryWarnings (모순 경고, 6.7)
 ├─ tests/domain/                  # 도메인 함수 단위 테스트 (node:test + tsx, `npm test`, 9장)
+├─ scripts/check-secrets.ts       # 비밀값 노출 점검 (`npm run check:secrets`, 9장)
 ├─ tests/api/                     # 업로드·AI·권한 API 거부 테스트 (실행 중인 서버 대상, `npm run test:api`, 9장)
 ├─ tests/tx/                      # 트랜잭션 오류 문구: 오류 문구 누락 확인(`npm test`), 로컬 노드 실제 호출(`npm run test:tx`, 9장)
 ├─ hooks/                         # 클라이언트 상태 훅
@@ -868,7 +869,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - `npm run test:tx`: 포트 8546에 Hardhat 노드를 띄우고 `contracts/artifacts` 바이트코드로 새로 배포해, 일부러 실패하는 호출의 오류를 `toTxErrorMessage`에 넣어 문구를 확인한다 (권한·입력·가격 규칙·상태별 거부·기한 경계·중복 중재·잔액 부족·MetaMask가 감싼 오류). `deployment.json`은 건드리지 않는다. ethers의 같은 요청 결과 재사용(`cacheTimeout`)을 끈다
 - `npm run test:api`: 실행 중인 서버(기본 `localhost:3000`, `API_BASE_URL`)의 업로드·AI·권한 API에 임의 지갑으로 서명해 요청하고, Pinata 업로드·Gemini 호출 전에 거부되는지 확인한다 (서명 없음·주소 불일치·번호 불일치·다른 체인·다른 용도 서명 재사용·만료·미래 시각, 권한 없음, 없는 NFT·거래, 요청 크기). 권한이 있는 지갑이 필요한 형식 검사(사진 바이트 판별 등)는 다루지 않는다. 대상이 체인에 없으면 403 대신 400으로 확인한다
 - `npm run lint`, `npm run build`
-- 비밀값 노출 점검: 빌드 후 `.next/static`(브라우저로 전달되는 파일)에서 `RPC_URL`, `PINATA_JWT` 값이 검색되지 않는지 확인
+- 비밀값 노출 점검 `npm run check:secrets` (`scripts/check-secrets.ts`, 빌드 후): 브라우저 파일(`.next/static`)에 키 형식(JWT·Google API 키·키가 들어간 RPC 주소)·서버 전용 환경 변수 이름·서버 조회 RPC 주소·Pinata/Gemini API 주소(서버 전용 모듈의 흔적)가 없는지, 서버 빌드에 키 값이 박혀 있지 않은지, 저장소에 `.env` 파일·키 형식 문자열이 없는지, 소스에 `NEXT_PUBLIC_` 변수가 없는지. 기본 실행은 `.env.local`을 읽지 않고 형식으로만 찾는다. 실제 값 비교는 실행하는 사람이 `node --env-file=.env.local --import tsx scripts/check-secrets.ts`로 할 수 있다 (값은 출력하지 않음)
 - CID 점검: 시연에 사용하는 메타데이터·상태 기록 CID가 공개 게이트웨이에서 조회되는지 발행·등록 전에 확인
 - 로컬 Hardhat 노드와 MetaMask 계정 3개(관리자·아티스트 / 판매자 / 구매자)로 흐름 A·B 수동 시연
 - Sepolia 배포 후 같은 시나리오 반복

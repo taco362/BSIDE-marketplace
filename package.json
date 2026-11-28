@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "tsx --test \"tests/**/*.test.ts\"",
     "test:tx": "tsx --test \"tests/tx/*.integration.ts\"",
-    "test:api": "tsx --test \"tests/api/*.integration.ts\""
+    "test:api": "tsx --test \"tests/api/*.integration.ts\"",
+    "check:secrets": "tsx scripts/check-secrets.ts"
   },
   "dependencies": {
     "ethers": "^6.17.0",
