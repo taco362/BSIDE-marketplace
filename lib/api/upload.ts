@@ -83,13 +83,19 @@ export async function uploadMetadata(
   return readResult(await post("/api/ipfs/metadata", { body, headers: { "Content-Type": "application/json" } }));
 }
 
-/** 재판매 상태 기록 업로드: 상태 정보 + 사진 CID → 상태 기록 CID */
-export function uploadCondition(input: ConditionInput, images: string[], auth: SignedUploadAuth): Promise<string> {
+/** 재판매 상태 기록 업로드: 상태 정보 + 사진 CID (+ AI 초안 활용 여부, D14) → 상태 기록 CID */
+export function uploadCondition(
+  input: ConditionInput,
+  images: string[],
+  auth: SignedUploadAuth,
+  aiAssisted = false,
+): Promise<string> {
   return postCondition(auth, {
     sealed: input.sealed,
     condition: input.condition,
     defects: input.defects,
     images,
+    ...(aiAssisted ? { aiAssisted: true } : {}),
   });
 }
 

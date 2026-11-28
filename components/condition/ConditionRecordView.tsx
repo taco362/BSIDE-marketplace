@@ -57,15 +57,25 @@ export async function ConditionRecordView({
           <Row label="사진">{record.images.length > 0 ? "발행 때 올린 대표 이미지" : "대표 이미지 없음"}</Row>
         </dl>
       ) : (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-          <Row label="개봉 여부">{record.sealed ? "미개봉" : "개봉"}</Row>
-          <Row label="사용 상태">
-            <span className="whitespace-pre-wrap break-words">{record.condition}</span>
-          </Row>
-          <Row label="하자">
-            <span className="whitespace-pre-wrap break-words">{record.defects}</span>
-          </Row>
-        </dl>
+        <>
+          {record.aiAssisted && (
+            <p
+              className="self-start rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+              title="판매자가 AI 초안을 받아 확인·수정해 작성했다고 표시한 기록입니다 (판매자 표시)."
+            >
+              ✨ AI 초안 활용
+            </p>
+          )}
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <Row label="개봉 여부">{record.sealed ? "미개봉" : "개봉"}</Row>
+            <Row label="사용 상태">
+              <span className="whitespace-pre-wrap break-words">{record.condition}</span>
+            </Row>
+            <Row label="하자">
+              <span className="whitespace-pre-wrap break-words">{record.defects}</span>
+            </Row>
+          </dl>
+        </>
       )}
 
       {record.images.length > 0 && (

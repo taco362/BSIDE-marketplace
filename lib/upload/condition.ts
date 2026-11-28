@@ -36,8 +36,11 @@ export async function buildConditionRecord(
 }
 
 function buildResaleRecord(body: Record<string, unknown>, auth: UploadAuth): ResaleConditionRecord {
-  const { sealed, condition, defects, images } = body;
+  const { sealed, condition, defects, images, aiAssisted } = body;
   if (typeof sealed !== "boolean") throw new UploadError(400, "개봉 여부를 선택하세요.");
+  if (aiAssisted !== undefined && typeof aiAssisted !== "boolean") {
+    throw new UploadError(400, "AI 초안 활용 표시 형식이 올바르지 않습니다.");
+  }
   if (typeof condition !== "string") throw new UploadError(400, "사용 상태를 입력하세요.");
   if (defects !== undefined && typeof defects !== "string") throw new UploadError(400, "하자 정보 형식이 올바르지 않습니다.");
 
@@ -60,6 +63,8 @@ function buildResaleRecord(body: Record<string, unknown>, auth: UploadAuth): Res
     defects: input.defects || NO_DEFECTS,
     images,
     createdAt: new Date().toISOString(),
+    // 판매자 자기 신고 (D14). false·없음이면 필드를 넣지 않아 기존 기록과 같은 형식이 된다
+    ...(aiAssisted === true ? { aiAssisted: true as const } : {}),
   };
 }
 

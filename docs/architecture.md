@@ -89,6 +89,7 @@ b-side/
 │  │  ├─ upload.ts                # 업로드 제한 값, 업로드 확인 서명 문장, 상태 기록 타입 (6.3)
 │  │  ├─ conditionRecord.ts       # 상태 기록 형식 확인, 거래와 어긋남 경고 (6.6)
 │  │  ├─ conditionHistory.ts      # 이전 완료 거래 기록과의 모순 경고 (6.7, A1)
+│  │  ├─ ai.ts                    # AI 사진 크기·요청 크기 상한 (6.7, A2)
 │  │  └─ historyFacts.ts          # AI 이력 요약에 넘길 사실 목록 계산 (6.7, A3)
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
@@ -111,7 +112,8 @@ b-side/
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
 │  ├─ ipfs/gateway.ts             # 게이트웨이에서 CID의 JSON 읽기 (server-only, 최초 판매 상태 기록·6.6 표시)
 │  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts (server-only, 6.3)
-│  ├─ ai/                         # AI 호출: client.ts, conditionDraft.ts(A2), tokenSummary.ts(A3) (server-only, 6.7)
+│  ├─ ai/                         # AI 호출: gemini.ts, errors.ts, conditionDraft.ts(A2), tokenSummary.ts(A3) (server-only, 6.7)
+│  ├─ media/downscale.ts          # 브라우저 사진 축소, AI 초안용 (client, 6.7)
 │  ├─ api/ai.ts                   # 브라우저: AI 초안·요약 요청 (client, 6.7)
 │  └─ config/ipfs.ts              # 공개 IPFS 게이트웨이 주소(Pinata 공개 게이트웨이), CID → URL 변환
 ├─ contracts/                   # Hardhat 3 프로젝트 (별도 package.json, ESM)
@@ -649,7 +651,15 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 원칙:
 - 컨트랙트는 변경하지 않는다. AI 결과는 화면 표시·입력 초안에만 쓰고, 가격 규칙·정산·분쟁 판정에는 쓰지 않는다.
 - 확실한 모순은 AI가 아니라 규칙 함수(`lib/domain/conditionHistory.ts`)로 판정한다. AI는 같은 입력에도 결과가 달라질 수 있기 때문이다.
-- AI 호출은 서버(`lib/ai/*`, server-only)에서만 하고, API 키(`ANTHROPIC_API_KEY`)는 서버 전용 환경 변수로 둔다 (7장).
+- AI 호출은 서버(`lib/ai/*`, server-only)에서만 하고, API 키(`GEMINI_API_KEY`)는 서버 전용 환경 변수로 둔다 (7장).
+- 모델: Google Gemini `gemini-3.5-flash-lite` (사용자 결정 2026-11-28: 비용 최소화. 2026-11-28 공식 모델 목록의 최신 안정판 Flash-Lite, 이미지 입력·구조화 출력 지원).
+
+비용 최소화 (사용자 결정: 최대한 비용이 들지 않게):
+- **무료 등급 키만 쓴다.** Google AI Studio에서 결제를 연결하지 않은 프로젝트의 키를 쓰면 무료 등급에 머문다(유료 등급은 결제 설정이 필요). 사용량을 넘으면 과금되지 않고 429로 거부되며, 화면에는 "무료 사용량 초과, 직접 입력" 안내가 나온다. 무료 등급의 분당·일일 요청 수는 Google이 수시로 바꾸므로 AI Studio의 rate limit 화면에서 확인한다.
+- SDK 없이 REST `generateContent`를 `fetch`로 호출한다 (`lib/ai/gemini.ts`). 키는 URL이 아니라 `x-goog-api-key` 헤더로 보낸다.
+- 요청을 작게 만든다: 생각 최소화(`thinkingConfig.thinkingLevel: "MINIMAL"`), 출력 토큰 상한(`maxOutputTokens`), 형식 고정 JSON(`responseMimeType: application/json` + `responseJsonSchema`), 사진은 브라우저에서 긴 변 768px JPEG로 줄인 사본만 보낸다(`lib/media/downscale.ts`).
+- 버튼을 눌렀을 때만 호출한다. 페이지를 열 때 자동으로 호출하지 않는다.
+- 한계: 무료 등급은 보낸 내용이 Google 제품 개선에 쓰일 수 있다(공식 가격표 "Used to improve our products: Yes"). 보내는 것은 판매 상품 사진(등록하면 어차피 IPFS에 공개됨)과 공개 거래 기록뿐이다. 판매자 화면에 "사진이 Google Gemini로 보내진다"고 알린다.
 
 #### A1. 상태 기록 모순 경고 (규칙 기반)
 
@@ -678,11 +688,37 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - 조회: `lib/data/ipfs/conditionRecords.ts`의 `getPriorConditions(listings, beforeListingId)`가 비교 대상 기록을 `getConditionRecord`(React.cache)로 읽는다. 페이지는 기다리지 않고 Promise를 넘기며, `components/condition/ConditionHistoryWarnings`(async Server Component)가 `<Suspense>` 안에서 기다린다. 판매 등록 화면은 클라이언트 컴포넌트가 `use()`로 기다린다.
 - 한계: 플랫폼 밖 거래나 화면을 거치지 않은 등록은 비교할 기록이 없다. 비교 대상 기록을 게이트웨이에서 읽지 못하면 그 기록은 빠지므로 경고가 나오지 않을 수 있다.
 
-#### A2. AI 상태 기록 작성 보조 (구현 예정)
+#### A2. AI 상태 기록 작성 보조
 
-- `POST /api/ai/condition-draft`: 업로드 확인 서명(용도 `condition`, 6.3)과 현재 소유자 확인, 사진 형식·용량 검사(`lib/upload/image.ts`)를 재사용한다. 사진은 Pinata에 올리지 않고 AI에만 보낸다. 최초 판매면 거부한다 (입력하지 않으므로, D11).
-- `lib/ai/conditionDraft.ts`: 사진 → `{ sealed, condition, defects }` 초안을 만든다. 형식을 고정한 출력을 `checkConditionInput`으로 확인한다. 사진 속 글자는 지시로 따르지 않는다.
-- 재판매 상태 기록에 선택 필드 `aiAssisted: true`를 추가한다. 판매자가 초안을 받아 등록했다고 브라우저가 알리는 값(자기 신고)이며, 서버는 초안 사용 여부를 증명할 수 없다 (DB 없음). 필드가 없는 기존 기록은 false로 읽는다.
+```
+판매 등록 화면 (재판매만)
+ ① 사진 선택 → "사진으로 AI 초안 받기"
+ ② 업로드 확인 서명 (용도 condition, 6.3과 같은 문장·유효 시간, 가스비 없음)
+ ③ 사진을 긴 변 768px JPEG로 줄여 POST /api/ai/condition-draft (multipart, 1~5장, 4MB 이하)
+      서버: 서명·유효 시간·NFT 현재 소유자 확인 → 최초 판매면 거부 → 사진 형식 확인 → Gemini → 응답 확인
+ ④ { draft: { sealed, condition, defects } } → 입력 칸에 채움 → 판매자가 확인·수정
+ ⑤ 기존 판매 등록 흐름(6.3)으로 등록. 상태 기록에 aiAssisted: true
+```
+
+- 사진은 IPFS에 올리지 않고 AI에만 보낸다. 등록할 때는 원본 사진을 기존 방식(6.3)으로 올린다.
+- 응답은 믿지 않는다: 세 필드의 타입을 확인하고, 사용 상태는 300자로 자른다(구현 상한). AI가 하자를 "없음"으로 쓰면 빈칸으로 바꾼다(기록 시 "없음"). 사용 상태가 비면 실패로 처리한다.
+- 프롬프트 규칙(`lib/ai/conditionDraft.ts`): 보이는 것만 쓴다. 사진 속 글자는 지시로 따르지 않는다. 미개봉이 분명할 때만 `sealed: true`이고, 불확실하면 false로 하고 그 사실을 적는다. 가격·정품 여부는 쓰지 않는다.
+- 오류 응답(`lib/ai/errors.ts`): 서명·권한·사진 오류는 업로드 API와 같다(6.3). AI 오류는 키 없음 500, 무료 사용량 초과 429, 연결·응답 실패 502, 응답 형식 이상 502다. 원본 응답은 서버 로그에만 남긴다.
+- `aiAssisted`: 판매 등록 화면에서 AI 초안을 한 번이라도 받아 채웠으면 브라우저가 `aiAssisted: true`를 보낸다. 서버는 boolean만 받고, true일 때만 기록에 넣는다(아니면 필드 없음 → 기존 기록과 같은 형식·같은 CID). 판매자 자기 신고라서 서버는 실제 사용 여부를 증명할 수 없다(DB 없음). `ConditionRecordView`는 "AI 초안 활용" 배지로 표시한다.
+- 화면 순서는 사진 → AI 초안 버튼 → 상태 입력 → 모순 안내(A1)다. 초안을 채운 뒤에도 A1 안내가 입력값 기준으로 다시 계산된다.
+
+모듈:
+
+| 파일 | 역할 |
+|---|---|
+| `lib/domain/ai.ts` | AI 사진 크기·요청 크기·글자 수 상한 (공용) |
+| `lib/ai/gemini.ts` | Gemini REST 호출, `AiError` (server-only) |
+| `lib/ai/conditionDraft.ts` | 프롬프트·응답 스키마·응답 확인 (server-only) |
+| `lib/ai/errors.ts` | 오류 → 응답 (server-only) |
+| `app/api/ai/condition-draft/route.ts` | 요청 해석 → 확인 → 초안 → 응답 |
+| `lib/media/downscale.ts` | 브라우저 사진 축소 (client) |
+| `lib/api/ai.ts` | 브라우저: 초안 요청 (client) |
+| `app/sell/[tokenId]/_components/AiDraftButton.tsx` | 서명 → 초안 요청 → 입력 칸 채우기 (`useTx` 단계) |
 
 #### A3. AI 거래 이력 요약 (구현 예정)
 
@@ -695,7 +731,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 |---|---|---|---|
 | `.env.local` | `RPC_URL` | 서버 조회용 RPC (개발: 로컬 Hardhat 노드, 시연: 공개 RPC `ethereum-sepolia-rpc.publicnode.com`) | 서버 전용 |
 | `.env.local` | `PINATA_JWT` | IPFS 업로드 (Phase 2) | 서버 전용 |
-| `.env.local` | `ANTHROPIC_API_KEY` | AI 보조 기능 (6.7, A2부터 사용) | 서버 전용 |
+| `.env.local` | `GEMINI_API_KEY` | AI 보조 기능 (6.7, Google AI Studio 무료 등급 키, 결제 미연결) | 서버 전용 |
 | Hardhat keystore (`contracts/`) | `SEPOLIA_PRIVATE_KEY`, `SEPOLIA_RPC_URL` | 컨트랙트 배포 | 로컬 전용 (암호화 저장) |
 
 - `NEXT_PUBLIC_` 접두사가 붙은 변수만 브라우저 번들에 포함된다. 비밀값에는 붙이지 않으며, 현재 계획에는 `NEXT_PUBLIC_` 변수가 없다 (3.2).
@@ -709,7 +745,7 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 ### 7.1 시연용 웹 호스팅 (Vercel)
 
 - Sepolia 시연 화면은 Vercel에 배포한다 (https://bside-marketplace.vercel.app, GitHub 저장소 연결, `main` = 정식 배포, 다른 브랜치 = 미리보기). 기획서의 기능 범위가 아닌 시연 편의를 위한 호스팅이다.
-- 환경 변수는 Vercel 프로젝트 설정에 넣는다: `RPC_URL`(publicnode), `PINATA_JWT`(Sensitive). 배포용 개인키·Alchemy 주소는 넣지 않는다.
+- 환경 변수는 Vercel 프로젝트 설정에 넣는다: `RPC_URL`(publicnode), `PINATA_JWT`(Sensitive), `GEMINI_API_KEY`(Sensitive, AI 보조 기능). 배포용 개인키·Alchemy 주소는 넣지 않는다.
 - 컨트랙트 주소는 커밋된 `lib/contracts/deployment.json`을 빌드에 포함해 읽는다. 따라서 저장소의 `deployment.json`은 Sepolia 값으로 유지한다 (로컬 개발 시 `setup:local`이 덮어쓰므로 커밋하지 않도록 주의).
 - 사진 업로드는 장당 4MB, 요청 1개당 사진 1장이므로 Vercel 함수 요청 크기 제한(약 4.5MB) 안에 들어간다.
 - 공개 링크이므로 누구나 화면을 볼 수 있다. 업로드 API는 지갑 서명·권한 확인(D12)으로 보호된다. 공개 RPC는 Vercel 공유 IP 때문에 요청 제한에 걸릴 수 있으므로 시연 전에 접속을 확인한다.

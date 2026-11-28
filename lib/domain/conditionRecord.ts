@@ -40,7 +40,14 @@ export function parseConditionRecord(value: unknown): ConditionRecord | null {
   }
   if (v.type !== undefined && v.type !== "resale") return null;
   if (typeof v.sealed !== "boolean" || typeof v.defects !== "string") return null;
-  return { ...base, type: "resale", sealed: v.sealed, defects: v.defects };
+  // aiAssisted: true일 때만 표시 (D14). 없거나 다른 값이면 표시하지 않는다 (기존 기록 호환)
+  return {
+    ...base,
+    type: "resale",
+    sealed: v.sealed,
+    defects: v.defects,
+    ...(v.aiAssisted === true ? { aiAssisted: true as const } : {}),
+  };
 }
 
 /** 기록이 이 거래와 맞지 않으면 경고 문구 목록 (화면을 거치지 않고 등록된 경우) */

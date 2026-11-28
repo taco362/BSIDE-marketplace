@@ -47,6 +47,8 @@ interface ConditionRecordBase {
 /** 재판매 상태 기록: 판매자가 상태·사진을 입력 (D11). type이 없는 기록(변경 전에 올린 것)도 재판매 기록이다 */
 export interface ResaleConditionRecord extends ConditionRecordBase, ConditionInput {
   type: "resale";
+  /** AI 초안을 활용해 작성했다고 판매자가 표시한 기록이면 true (D14, 자기 신고). 아니면 필드 없음 */
+  aiAssisted?: true;
 }
 
 /**

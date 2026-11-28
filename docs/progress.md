@@ -7,8 +7,8 @@
 ## 현재 상태
 
 - **단계**: Phase 1 완료 (7단계 Sepolia 배포·시연 확인, 2026-11-27). Phase 2 업로드 U1~U4 완료
-- **다음 작업**: AI 보조 기능 A2(AI 상태 기록 작성 보조) — 사용자 확인 후 시작. Phase 2 나머지(판매자 환불·분쟁 제기 화면, 관리자 분쟁 중재 화면, 예외 상황 테스트)와의 순서는 사용자 결정 대기
-- **진행 중**: AI 보조 기능 (D14, 교수님 피드백 반영). A1 완료 (사용자 화면 확인)
+- **다음 작업**: A2 실제 Gemini 호출 확인 (사용자가 `GEMINI_API_KEY` 등록 후) → A3(AI 거래 이력 요약). Phase 2 나머지(판매자 환불·분쟁 제기 화면, 관리자 분쟁 중재 화면, 예외 상황 테스트)와의 순서는 사용자 결정 대기
+- **진행 중**: AI 보조 기능 (D14, 교수님 피드백 반영). A1 완료 (사용자 화면 확인), A2 구현 완료·실제 AI 호출 미확인 (브랜치 `feature/ai-assist`)
 - **시연 주소**: https://bside-marketplace.vercel.app (Sepolia)
 - **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결 + 거래 화면 (관리자, 발행, 판매 등록, 구매·수령 승인·정산 청구·등록 취소, 내 거래·출금)
 
@@ -253,7 +253,7 @@
 | 단계 | 작업 | 완료 기준 | 상태 |
 |---|---|---|---|
 | A1 | 상태 기록 모순 경고 (규칙 기반): 거래 상세·토큰 페이지 경고, 판매 등록 화면 판매자 안내 | 규칙 함수 확인, 모순 시나리오에서 화면 경고 확인 | ☑ 완료 |
-| A2 | AI 상태 기록 작성 보조 (사진 → 초안, `aiAssisted` 표시) | 거부 테스트, 실제 API 호출 1건, 배지 표시 | ☐ 대기 |
+| A2 | AI 상태 기록 작성 보조 (사진 → 초안, `aiAssisted` 표시). Gemini `gemini-3.5-flash-lite` 무료 등급 | 거부 테스트, 실제 API 호출 1건, 배지 표시 | ◐ 구현·거부 테스트 완료, 실제 AI 호출·화면 미확인 |
 | A3 | AI 거래 이력 요약 (토큰 페이지) | 요약 숫자가 사실 목록과 일치, 경고 언급 | ☐ 대기 |
 
 ### A1 결과 (2026-11-27)
@@ -364,6 +364,25 @@
   - 상태 기록은 페이지 요청마다 게이트웨이에서 다시 읽는다 (캐시 없음). 거래가 많은 토큰은 느릴 수 있으나 기록마다 따로 표시되어 나머지 화면은 먼저 보임
 - 사용자 화면 확인: 토큰 이력·거래 상세의 상태 기록 표시 정상 (사용자 보고 "화면 괜찮음")
 
+### A2 결과 (2026-11-28, 실제 AI 호출 대기)
+
+- 결정 (사용자): AI는 Google Gemini Flash-Lite, 최대한 비용이 들지 않게. 공식 모델 목록(2026-11-28)의 최신 안정판 `gemini-3.5-flash-lite` 사용, 결제를 연결하지 않은 무료 등급 키 전제 (architecture.md 6.7 비용 최소화). 환경 변수 이름을 `ANTHROPIC_API_KEY` → `GEMINI_API_KEY`로 변경
+- 구현 (세부 사항은 architecture.md 6.7 A2)
+  - 서버: `lib/ai/gemini.ts`(REST 직접 호출, SDK 없음, 생각 최소화·출력 상한·형식 고정 JSON, 키는 헤더), `lib/ai/conditionDraft.ts`(프롬프트·응답 확인), `lib/ai/errors.ts`, `app/api/ai/condition-draft/route.ts`(업로드 확인 서명·소유자 확인 재사용, 최초 판매 거부)
+  - 브라우저: `lib/media/downscale.ts`(긴 변 768px JPEG 사본), `lib/api/ai.ts`, `AiDraftButton`(서명 → 초안 → 입력 칸 채우기). 판매 등록 화면 순서를 사진 → AI 초안 → 상태 입력으로 변경
+  - `aiAssisted`: 상태 기록 선택 필드(true일 때만 기록), `parseConditionRecord`가 읽음, `ConditionRecordView`에 "AI 초안 활용" 배지
+  - 공용: `lib/domain/ai.ts`(사진 크기·요청 크기·글자 수 상한)
+- 검증
+  - `npx tsc --noEmit`, `npm run lint`, `npm run build` 통과
+  - API 검증 13건 통과 (새 로컬 노드 + dev 서버, 키 없이 실행, scratchpad 스크립트. 저장소에 포함하지 않음): multipart 아님 400, 4MB 초과 413, 서명 없음 401, 주소 위조 401, 만료 401, metadata 용도 서명 401, 소유자 아님 403, 최초 판매 토큰 400, 사진 0장·6장 400, PNG로 위장한 텍스트 415, 정상 요청 + 키 없음 500(설정 안내), 상태 기록 API의 `aiAssisted` 형식 오류 400(업로드 전 거부)
+  - 첫 실행에서 metadata 용도 서명 케이스 1건 실패 → 검증 스크립트가 tokenId를 두 번 넣은 스크립트 오류. 수정 후 재실행 통과 (앱 코드 변경 없음)
+  - `aiAssisted` 해석 5건 통과: true만 표시, false·문자열·없음·type 없는 기존 기록은 표시 안 함
+  - 검증 후 노드·서버 종료(남은 프로세스 직접 종료), `lib/contracts`는 git의 Sepolia 값으로 복구
+- 미검증 (숨기지 않음)
+  - **실제 Gemini 호출**: 아직 키가 없음. 키 등록 후 확인할 것 — 응답 형식(`responseJsonSchema`, `thinkingLevel: MINIMAL` 필드 수용 여부), `x-goog-api-key` 헤더 인증, 초안 품질, 429 안내
+  - 브라우저 사진 축소(`createImageBitmap`·canvas), AI 초안 버튼·배지 화면 표시, MetaMask 서명 흐름
+  - 무료 등급 일일 한도는 Google이 바꿀 수 있어 확정하지 않음 (AI Studio rate limit 화면에서 확인)
+
 ## Phase 3 — 확장 기능
 
 | 작업 | 상태 |
@@ -409,3 +428,4 @@
 | 2026-11-27 | Sepolia 배포(BSideNFT `0xAC41…93eF`, BSideEscrow `0xe696…8c60`) 및 온체인 설정 확인. 서버 조회 RPC를 publicnode로 전환. Vercel 시연 배포(https://bside-marketplace.vercel.app) 응답 확인 |
 | 2026-11-27 | Phase 1 · 7단계 완료: 사용자가 Vercel 링크에서 Sepolia 흐름 A·B 시연 확인. Phase 1 전 단계 완료 |
 | 2026-11-27 | AI 보조 기능 결정 (D14, 교수님 피드백): 모순 경고(규칙 기반)·AI 상태 초안·AI 이력 요약. A1 모순 경고 완료 (규칙 10건 통과, 사용자 화면 확인) |
+| 2026-11-28 | AI 제공자 결정: Gemini `gemini-3.5-flash-lite` 무료 등급(비용 최소화), `GEMINI_API_KEY`. A2 AI 상태 초안 구현, API 거부 13건 통과. 실제 AI 호출은 키 등록 후 확인 |

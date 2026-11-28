@@ -26,6 +26,7 @@ import {
 } from "@/lib/domain/upload";
 import { list, listedListingId } from "@/lib/tx/escrow";
 import { approveEscrowIfNeeded } from "@/lib/tx/nft";
+import { AiDraftButton } from "./AiDraftButton";
 import { ConditionFields } from "./ConditionFields";
 import { PriorConditionNotice } from "./PriorConditionNotice";
 
@@ -99,6 +100,8 @@ function Form({
   const [priceText, setPriceText] = useState("");
   const [condition, setCondition] = useState<ConditionInput>({ sealed: true, condition: "", defects: "" });
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
+  // AI 초안을 한 번이라도 받아 채웠으면 기록에 표시한다 (판매자 자기 신고, 6.7 A2)
+  const [aiAssisted, setAiAssisted] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   // 업로드는 끝났는데 승인·등록 서명을 거부한 경우, 입력이 같으면 다시 올리지 않고 같은 상태 기록 CID를 쓴다
   const uploaded = useRef<{ key: string; cid: string } | null>(null);
@@ -116,7 +119,7 @@ function Form({
     setSubmitted(true);
     if (priceError || conditionError || photoError || price === null) return;
 
-    const inputKey = primary ? "primary" : JSON.stringify([condition, photos.map((p) => p.id)]);
+    const inputKey = primary ? "primary" : JSON.stringify([condition, photos.map((p) => p.id), aiAssisted]);
     let conditionCid = uploaded.current?.key === inputKey ? uploaded.current.cid : null;
     let auth: SignedUploadAuth | null = null;
     const imageCids: string[] = [];
@@ -150,7 +153,7 @@ function Form({
               const signed = auth as SignedUploadAuth;
               conditionCid = primary
                 ? await uploadPrimaryCondition(signed)
-                : await uploadCondition(condition, imageCids, signed);
+                : await uploadCondition(condition, imageCids, signed, aiAssisted);
               uploaded.current = { key: inputKey, cid: conditionCid };
               return null;
             },
@@ -206,16 +209,6 @@ function Form({
         </div>
       ) : (
         <>
-          <ConditionFields
-            value={condition}
-            onChange={setCondition}
-            error={submitted ? conditionError : null}
-            disabled={tx.busy}
-          />
-          <Suspense fallback={null}>
-            <PriorConditionNotice value={condition} prior={priorConditions} />
-          </Suspense>
-
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">상품 사진</span>
             <PhotoPicker
@@ -227,6 +220,31 @@ function Form({
             />
             {submitted && photoError && <p className="text-xs text-red-600">{photoError}</p>}
           </div>
+
+          <AiDraftButton
+            tokenId={token.tokenId}
+            photos={photos}
+            disabled={tx.busy}
+            onDraft={(draft) => {
+              setCondition(draft);
+              setAiAssisted(true);
+            }}
+          />
+
+          <ConditionFields
+            value={condition}
+            onChange={setCondition}
+            error={submitted ? conditionError : null}
+            disabled={tx.busy}
+          />
+          {aiAssisted && (
+            <p className="text-xs text-violet-700 dark:text-violet-400">
+              AI 초안을 사용했습니다. 이 판매 건의 상태 기록에 &quot;AI 초안 활용&quot;으로 표시됩니다.
+            </p>
+          )}
+          <Suspense fallback={null}>
+            <PriorConditionNotice value={condition} prior={priorConditions} />
+          </Suspense>
         </>
       )}
 
