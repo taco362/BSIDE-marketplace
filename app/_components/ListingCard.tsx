@@ -1,16 +1,24 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { AccountLabel } from "@/components/account/AccountLabel";
 import { PolicyBadge } from "@/components/token/PolicyBadge";
 import { accountOf } from "@/lib/domain/account";
 import { formatEth, isSameAddress } from "@/lib/domain/format";
 import type { AccountDirectory, ListingWithToken } from "@/lib/domain/types";
+import { ListingTitle, ListingTitleText, fallbackTitle } from "./ListingTitle";
 
-/** 판매 목록 카드: 아티스트(발행자)와 판매자(현재 등록자)를 나누어 표시 */
+/**
+ * 판매 목록 카드: 상품 이름, 가격, 정책, 아티스트(발행자)와 판매자(현재 등록자)
+ * 토큰·거래 번호는 거래 상세·토큰 페이지에서 보인다.
+ */
 export function ListingCard({
   item: { listing, token },
+  name,
   accounts,
 }: {
   item: ListingWithToken;
+  /** 메타데이터의 상품 이름 (페이지가 기다리지 않고 넘긴다) */
+  name: Promise<string | null>;
   accounts: AccountDirectory;
 }) {
   const sellerIsArtist = isSameAddress(listing.seller, token.artist);
@@ -20,10 +28,9 @@ export function ListingCard({
       href={`/listings/${listing.listingId}`}
       className="flex h-full flex-col gap-3 rounded-xl border border-zinc-200 p-4 transition-colors hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600"
     >
-      <div className="flex items-center justify-between text-sm text-zinc-500">
-        <span>토큰 #{token.tokenId}</span>
-        <span>거래 #{listing.listingId}</span>
-      </div>
+      <Suspense fallback={<ListingTitleText text={fallbackTitle(token.tokenId)} />}>
+        <ListingTitle tokenId={token.tokenId} name={name} />
+      </Suspense>
       <p className="text-xl font-semibold">{formatEth(listing.price)}</p>
       <div className="flex flex-wrap items-center gap-2">
         <PolicyBadge policy={token.policy} policyBps={token.policyBps} />

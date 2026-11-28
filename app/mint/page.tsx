@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getMarketReader } from "@/lib/data";
+import { RoleGate } from "@/components/wallet/RoleGate";
 import { MintForm } from "./_components/MintForm";
 
 /** 아티스트 NFT 발행 (FR-01, 흐름 A 1~4) */
@@ -21,5 +22,13 @@ export default function MintPage() {
 
 async function MintContent() {
   const artists = await getMarketReader().getArtists();
-  return <MintForm verifiedArtists={artists.filter((a) => a.verifiedArtist).map((a) => a.address)} />;
+  // 승인된 아티스트 지갑이 연결됐을 때만 폼을 보인다 (화면 표시용, 발행 권한은 컨트랙트가 확인)
+  return (
+    <RoleGate
+      allowed={artists.filter((a) => a.verifiedArtist).map((a) => a.address)}
+      deniedMessage="NFT 발행은 관리자가 승인한 아티스트만 이용할 수 있습니다. 아티스트라면 승인받은 지갑으로 연결하세요."
+    >
+      <MintForm />
+    </RoleGate>
+  );
 }

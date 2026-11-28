@@ -60,12 +60,13 @@ b-side/
 │  ├─ sell/[tokenId]/             # 판매 등록 (page.tsx + _components/SellForm, ConditionFields). NFT 선택은 my의 보유 NFT 목록에서
 │  ├─ my/                         # 출금, 보유 NFT, 판매·구매 거래 (?account=, 6.5) (+ _components/AccountSync, WithdrawPanel, MyTokenList, MyListingsTable)
 │  ├─ admin/                      # 아티스트 등록·활동명 변경·회수 (+ _components/RegisterArtistForm, ArtistTable, RevokeArtistButton). 분쟁 중재는 Phase 2
+│  ├─ api/account/roles/          # 연결 지갑의 관리자·아티스트 여부 (메뉴 표시용, 6.5)
 │  ├─ api/ipfs/                   # Pinata 업로드 (Phase 2, 6.3): images/route.ts(U1), condition/route.ts(U2), metadata/route.ts(U3)
 │  └─ api/ai/                     # AI 보조 (D14, 6.7): condition-draft/route.ts(A2), token-summary/route.ts(A3)
 ├─ components/                    # 여러 페이지에서 재사용하는 UI
 │  ├─ ui/                         # 도메인과 무관한 기본 요소 (DetailList, IpfsLink, CopyButton, FormField)
 │  ├─ account/                    # AccountLabel (활동명·인증 표시·축약/전체 주소, D7)
-│  ├─ wallet/                     # ConnectButton (연결·네트워크 전환), NetworkGuard (거래 기능에서만 연결·네트워크 요구)
+│  ├─ wallet/                     # ConnectButton (연결·네트워크 전환), NetworkGuard (거래 기능에서만 연결·네트워크 요구), RoleGate (권한 화면 표시, 6.5)
 │  ├─ listing/                    # ListingStatusBadge
 │  ├─ token/                      # TokenSummary, PolicyBadge
 │  ├─ tx/                         # TxStatus (서명 대기·처리 중·블록 포함 대기·성공·실패 표시), TxButton (입력 없는 단일 동작 버튼)
@@ -73,6 +74,7 @@ b-side/
 │  └─ condition/                  # ConditionRecordView (거래별 상품 상태 기록 표시, 6.6), ConditionHistoryWarnings (모순 경고, 6.7)
 ├─ hooks/                         # 클라이언트 상태 훅
 │  ├─ useWallet.ts                # 연결 계정, 체인, 연결·네트워크 전환 (모듈 단위 저장소 + useSyncExternalStore, 6.5)
+│  ├─ useAccountRoles.ts         # 연결 지갑의 권한 (메뉴 표시용, 6.5)
 │  ├─ useTx.ts                    # 트랜잭션 단계 실행·진행 상태·오류 문구, 성공 시 router.refresh() (6.2)
 │  └─ useNow.ts                   # 현재 시각(초). 정산 청구 버튼의 기한 경과 표시용
 ├─ lib/
@@ -90,6 +92,7 @@ b-side/
 │  │  ├─ conditionRecord.ts       # 상태 기록 형식 확인, 거래와 어긋남 경고 (6.6)
 │  │  ├─ conditionHistory.ts      # 이전 완료 거래 기록과의 모순 경고 (6.7, A1)
 │  │  ├─ ai.ts                    # AI 사진 크기·요청 크기 상한 (6.7, A2)
+│  │  ├─ metadata.ts              # NFT 메타데이터에서 상품 이름 읽기 (6.1)
 │  │  └─ historyFacts.ts          # AI 이력 요약에 넘길 사실 목록 계산 (6.7, A3)
 │  ├─ data/                       # 읽기 전용
 │  │  ├─ reader.ts                # MarketReader 인터페이스
@@ -102,6 +105,7 @@ b-side/
 │  │  ├─ chain/artists.ts         # ArtistRegistered 이벤트로 등록된 아티스트 목록 (server-only)
 │  │  ├─ chain/logs.ts            # 이벤트 로그 구간 나누어 조회 (server-only)
 │  │  ├─ ipfs/conditionRecords.ts # 상태 기록 조회 (server-only, 6.6)
+│  │  ├─ ipfs/tokenMetadata.ts    # 상품 이름 조회 (server-only, 6.1 판매 목록 카드)
 │  │  └─ index.ts                 # getMarketReader(): chainReader 반환 (구현체 선택 로직 없음)
 │  ├─ tx/                         # 쓰기 전용 (client), 컨트랙트별로 분리
 │  │  ├─ nft.ts                   # mint, approve(필요할 때만), 아티스트 등록·회수, 발행 영수증에서 토큰 ID 찾기
@@ -109,6 +113,7 @@ b-side/
 │  │  └─ errors.ts                # 트랜잭션 오류·custom error → 한국어 안내 문구
 │  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer (client)
 │  ├─ api/upload.ts               # 업로드 확인 서명, /api/ipfs/* 호출 (client, 6.3)
+│  ├─ api/account.ts              # 권한 조회 /api/account/roles 호출 (client, 6.5)
 │  ├─ ipfs/pinata.ts              # Pinata 업로드 (server-only, Phase 2)
 │  ├─ ipfs/gateway.ts             # 게이트웨이에서 CID의 JSON 읽기 (server-only, 최초 판매 상태 기록·6.6 표시)
 │  ├─ upload/                     # 업로드 요청 확인: auth.ts(서명·권한), image.ts(형식·크기), errors.ts (server-only, 6.3)
@@ -437,13 +442,14 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 
 | 화면 | 방법 |
 |---|---|
-| 판매 중 목록 | `getListings`를 50건씩 읽고 `status == LISTED`로 필터 |
+| 판매 중 목록 | `getListings`를 50건씩 읽고 `status == LISTED`로 필터. 카드 제목은 상품 이름(아래) |
 | 거래 상세 | `getListings`로 해당 거래 조회 + 토큰 정보 |
 | 내 NFT | `getTokens`를 50건씩 읽고 `owner == 내 주소`로 필터 |
 | 내 판매·구매 거래 | `getListings`에서 `seller` 또는 `buyer`로 필터 |
 | 분쟁 목록 (관리자) | `getListings`에서 `status == DISPUTED`로 필터 |
 | NFT별 거래 이력 | 해당 `tokenId` 이벤트 로그로 타임라인 구성 (블록 시각, 트랜잭션 해시) |
 
+- 판매 목록 카드의 제목은 NFT 메타데이터의 상품 이름(`name`)이다 (2026-11-28 사용자 결정. 토큰·거래 번호는 카드에서 빼고 거래 상세·토큰 페이지에만 표시한다). `lib/data/ipfs/tokenMetadata.ts`의 `getTokenName(tokenURI)`가 `ipfs://<CID>`일 때만 게이트웨이에서 읽고(6.6과 같은 원칙), `parseTokenName`(`lib/domain/metadata.ts`)이 공백을 정리하고 100자로 제한한다. 페이지는 기다리지 않고 Promise를 넘기고, 카드마다 `<Suspense>`로 따로 표시한다. 이름이 없거나 읽지 못하면 "NFT #n"으로 표시한다. 아티스트·판매자 표시는 그대로 둔다(재판매 카드에서도 창작자를 보여 주기 위함).
 - 현재 상태는 항상 `getListings`의 `status`로 판단한다. 이벤트는 이력 표시에만 사용한다.
 - 무료 RPC는 `eth_getLogs`로 한 번에 조회할 수 있는 블록 범위가 제한된다. 이벤트는 배포 블록부터 구간을 나누어 조회한다. 조회에 실패하면 Listing에 저장된 `listedAt`, `lockedAt`, `closedAt`으로 이력을 대신 표시한다.
 - 전체를 훑는 방식은 거래 수에 비례해 느려진다. MVP 규모(수십~수백 건)에서는 충분하며, 규모가 커지면 PostgreSQL로 전환한다.
@@ -486,8 +492,8 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 
 | 화면 | 동작 (호출자) | 노출 조건 |
 |---|---|---|
-| `/admin` | 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`이 아니면 경고만 표시 |
-| `/mint` | 업로드 확인 서명 → 대표 이미지·메타데이터 업로드(6.3) → 발행 `mint` (아티스트) | 승인된 아티스트 목록에 없으면 경고만 표시 |
+| `/admin` | 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`일 때만 내용 표시, 아니면 안내만 (`RoleGate`, 6.5) |
+| `/mint` | 업로드 확인 서명 → 대표 이미지·메타데이터 업로드(6.3) → 발행 `mint` (아티스트) | 승인된 아티스트일 때만 폼 표시, 아니면 안내만 (`RoleGate`, 6.5) |
 | `/sell/[tokenId]` | 업로드 확인 서명 → 사진·상태 기록 업로드(6.3, 최초 판매는 서버 자동 작성) → `approve` → `list` (소유자) | 소유자일 때. 가격은 `listingPriceRule`: 최초 판매면 최초 판매가 고정, 정가 보호형 재판매면 상한 안내 |
 | `/listings/[id]` | LISTED: 구매 `buy`(판매자 외) / 등록 취소 `cancelListing`(판매자). LOCKED: 수령 승인 `confirmReceipt`(구매자) / 정산 청구 `claimAfterTimeout`(판매자, 기한 전에는 비활성) | 상태·역할별. DISPUTED·종료 상태는 안내 문구만 |
 | `/my` | 출금 `withdraw` (본인) | 조회 계정과 연결 계정이 같을 때 |
@@ -622,6 +628,12 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - 헤더의 `ConnectButton`은 선택 사항이다. MetaMask가 없으면 "지갑 없이 조회 중"만 표시하고, 다른 네트워크여도 작은 전환 링크만 보여준다.
 - 지갑 연결과 올바른 네트워크는 거래 기능에서만 요구한다. 거래 버튼을 `NetworkGuard`로 감싸, 연결 안 됨 → "지갑 연결", 다른 네트워크 → "네트워크 전환"을 그 자리에서 안내한다.
 - 내 거래(`/my`): 서버는 연결된 지갑을 알 수 없으므로 클라이언트의 `AccountSync`가 연결 계정을 주소창 `?account=`에 넣고(`router.replace`), 서버가 그 주소로 조회한다. MetaMask에서 계정을 바꾸면 화면도 따라 바뀐다. 주소는 공개 정보이므로 URL에 들어가도 문제없다. 지갑 없이 `?account=`로 다른 주소를 조회할 수는 있지만 출금 버튼은 그 계정으로 연결해야 나온다.
+
+권한별 메뉴·화면 표시 (2026-11-28 사용자 결정):
+- 헤더 메뉴: "관리자"는 관리자 지갑(`deployment.json`의 `admin`), "NFT 발행"은 현재 `ARTIST_ROLE`이 있는 지갑이 연결됐을 때만 보인다. 관리자도 아티스트로 등록하지 않으면 발행 메뉴가 보이지 않는다 (관리자·아티스트 역할 분리, 8.3 이해 충돌). 지갑을 연결하지 않으면 두 메뉴 모두 보이지 않는다.
+  - `useAccountRoles`가 연결 계정이 바뀔 때 `GET /api/account/roles?address=`(공개 온체인 정보만, `getAdmin`·`getAccounts`)를 호출한다. 화면 이동 때는 다시 조회하지 않는다. 헤더(레이아웃)에서 `usePathname`을 쓰면 Cache Components에서 동적 경로의 정적 렌더링이 막히기 때문이다. 승인·회수 결과는 새로고침하거나 계정을 다시 연결하면 반영된다.
+- 화면: `/admin`, `/mint`는 페이지가 체인에서 읽은 허용 주소(관리자 / 승인된 아티스트)를 `RoleGate`에 넘기고, 연결 계정이 허용 주소일 때만 폼·목록을 보인다. 아니면 안내 문구만 보인다.
+- **보안 수단이 아니다.** 로그인이 없어 서버는 접속자를 모르므로, 표시 여부는 브라우저가 연결 지갑으로 정한다. 주소로 직접 들어오면 페이지는 열리며, 숨긴 내용(아티스트 목록 등 공개 온체인 정보)도 페이지 데이터에는 포함된다. 실제 권한 확인은 쓰기 동작에서 컨트랙트가 한다 (`AccessControlUnauthorizedAccount`).
 
 - 연결 상태(계정, chainId, 진행 중 요청, 오류)는 `hooks/useWallet.ts`의 **모듈 단위 저장소 하나**에 두고 `useSyncExternalStore`로 구독한다. 모든 컴포넌트가 같은 상태를 보므로 별도 Context Provider(`WalletProvider`)를 두지 않는다.
   - 이전 설계(WalletProvider context)에서 변경한 이유: 상태 공유에 Provider가 필요 없고, 서버 렌더링·hydration 중에는 고정된 초기 상태("checking")를 쓰므로 서버/클라이언트 출력 불일치가 생기지 않는다.

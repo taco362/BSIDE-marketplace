@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getMarketReader } from "@/lib/data";
+import { getTokenName } from "@/lib/data/ipfs/tokenMetadata";
 import { ListingCard } from "./_components/ListingCard";
 
 /** 판매 중 상품 목록 */
@@ -27,7 +28,8 @@ async function ActiveListings() {
     <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
         <li key={item.listing.listingId}>
-          <ListingCard item={item} accounts={accounts} />
+          {/* 상품 이름은 기다리지 않고 넘긴다. 카드마다 따로 표시되어 게이트웨이가 느려도 목록은 먼저 보인다 */}
+          <ListingCard item={item} name={getTokenName(item.token.tokenURI)} accounts={accounts} />
         </li>
       ))}
     </ul>
