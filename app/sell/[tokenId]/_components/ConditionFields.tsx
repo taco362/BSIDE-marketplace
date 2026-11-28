@@ -1,24 +1,28 @@
 "use client";
 
 import { FormField, INPUT_CLASS } from "@/components/ui/FormField";
-import { MAX_CONDITION_TEXT, NO_DEFECTS, type ConditionInput } from "@/lib/domain/upload";
+import { MAX_CONDITION_TEXT, NO_DEFECTS, type ConditionFormValue } from "@/lib/domain/upload";
 
-/** 상품 상태 입력 (D11): 개봉 여부·사용 상태 필수, 하자 정보 선택 */
+/** 상품 상태 입력 (D11): 개봉 여부·사용 상태 필수, 하자 정보 선택. 개봉 여부는 미리 선택하지 않는다 (D14) */
 export function ConditionFields({
   value,
   onChange,
   error,
+  sealedError,
   disabled,
 }: {
-  value: ConditionInput;
-  onChange: (value: ConditionInput) => void;
+  value: ConditionFormValue;
+  onChange: (value: ConditionFormValue) => void;
+  /** 사용 상태·하자 입력 오류 */
   error: string | null;
+  /** 개봉 여부 미선택 오류 */
+  sealedError: string | null;
   disabled: boolean;
 }) {
   return (
     <>
       <fieldset className="flex flex-col gap-1.5" disabled={disabled}>
-        <legend className="mb-1.5 text-sm font-medium">개봉 여부</legend>
+        <legend className="mb-1.5 text-sm font-medium">개봉 여부 (직접 선택)</legend>
         <div className="flex gap-4 text-sm">
           {[
             { label: "미개봉", sealed: true },
@@ -35,6 +39,7 @@ export function ConditionFields({
             </label>
           ))}
         </div>
+        {sealedError && <p className="text-xs text-red-600">{sealedError}</p>}
       </fieldset>
 
       <FormField label="사용 상태" htmlFor="condition-text" hint="예: 1회 청음, 자켓 모서리 약간 눌림 없음" error={error}>

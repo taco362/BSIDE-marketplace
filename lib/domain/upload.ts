@@ -101,6 +101,17 @@ export function isCid(value: unknown): value is string {
   return typeof value === "string" && /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{50,})$/.test(value);
 }
 
+/**
+ * 판매 등록 화면의 입력 상태. 개봉 여부는 미리 선택하지 않고 판매자가 직접 고른다 (D14, null = 아직 선택 안 함)
+ */
+export type ConditionFormValue = Omit<ConditionInput, "sealed"> & { sealed: boolean | null };
+
+/** 화면 입력 확인: 개봉 여부 선택 + 상태 입력 확인. 통과하면 null */
+export function checkConditionForm(value: ConditionFormValue): string | null {
+  if (value.sealed === null) return "개봉 여부를 선택하세요.";
+  return checkConditionInput({ ...value, sealed: value.sealed });
+}
+
 /** 상태 입력 확인. 문제가 있으면 안내 문구, 없으면 null */
 export function checkConditionInput(input: ConditionInput): string | null {
   if (!input.condition.trim()) return "사용 상태를 입력하세요.";

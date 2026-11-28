@@ -4,9 +4,8 @@
  * - requestTokenSummary: NFT 번호 → POST /api/ai/token-summary → 거래 이력 요약
  * AI 키는 서버에만 있다. 브라우저는 우리 서버 API만 호출한다.
  */
-import { AI_DRAFT_IMAGE_MAX_SIDE } from "@/lib/domain/ai";
+import { AI_DRAFT_IMAGE_MAX_SIDE, type ConditionDraft } from "@/lib/domain/ai";
 import { UserFacingError } from "@/lib/domain/errors";
-import type { ConditionInput } from "@/lib/domain/upload";
 import { downscaleToJpeg } from "@/lib/media/downscale";
 import type { SignedUploadAuth } from "./upload";
 
@@ -31,7 +30,7 @@ export async function requestTokenSummary(tokenId: number): Promise<{ summary: s
   return { summary: body.summary, ai: body.ai === true };
 }
 
-export async function requestConditionDraft(files: File[], auth: SignedUploadAuth): Promise<ConditionInput> {
+export async function requestConditionDraft(files: File[], auth: SignedUploadAuth): Promise<ConditionDraft> {
   let images: Blob[];
   try {
     images = await Promise.all(files.map((f) => downscaleToJpeg(f, AI_DRAFT_IMAGE_MAX_SIDE)));
@@ -52,7 +51,7 @@ export async function requestConditionDraft(files: File[], auth: SignedUploadAut
   } catch {
     throw new AiRequestError("서버에 연결하지 못했습니다. 네트워크를 확인하고 다시 시도하세요.");
   }
-  const body = (await response.json().catch(() => null)) as { draft?: ConditionInput; error?: string } | null;
+  const body = (await response.json().catch(() => null)) as { draft?: ConditionDraft; error?: string } | null;
   if (!response.ok || !body?.draft) {
     throw new AiRequestError(body?.error ?? `AI 초안을 받지 못했습니다 (HTTP ${response.status}).`);
   }

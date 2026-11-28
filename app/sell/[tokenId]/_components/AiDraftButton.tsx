@@ -5,12 +5,12 @@ import type { SelectedPhoto } from "@/components/upload/PhotoPicker";
 import { useTx } from "@/hooks/useTx";
 import { requestConditionDraft } from "@/lib/api/ai";
 import { signUploadAuth, type SignedUploadAuth } from "@/lib/api/upload";
-import type { ConditionInput } from "@/lib/domain/upload";
+import type { ConditionDraft } from "@/lib/domain/ai";
 
 /**
  * AI 상태 초안 받기 (architecture.md 6.7 A2, D14)
- * 업로드 확인 서명(가스비 없음) → 고른 사진의 줄인 사본을 AI에 보내 초안을 받는다 → 입력 칸에 채운다.
- * 초안은 판매자가 확인·수정해서 등록한다.
+ * 업로드 확인 서명(가스비 없음) → 고른 사진의 줄인 사본을 AI에 보내 초안을 받는다 → 사용 상태·하자 칸에 채운다.
+ * 개봉 여부는 채우지 않는다 (판매자가 직접 선택, D14). 초안은 판매자가 확인·수정해서 등록한다.
  */
 export function AiDraftButton({
   tokenId,
@@ -21,13 +21,13 @@ export function AiDraftButton({
   tokenId: number;
   photos: SelectedPhoto[];
   disabled: boolean;
-  onDraft: (draft: ConditionInput) => void;
+  onDraft: (draft: ConditionDraft) => void;
 }) {
   const tx = useTx();
 
   async function onClick() {
     let auth: SignedUploadAuth | null = null;
-    let draft: ConditionInput | null = null;
+    let draft: ConditionDraft | null = null;
     const done = await tx.run([
       {
         label: "AI 초안용 확인 서명 (가스비 없음)",
@@ -63,10 +63,10 @@ export function AiDraftButton({
       </button>
       <p className="text-xs text-zinc-500">
         {photos.length === 0 ? "사진을 먼저 고르면 사용할 수 있습니다. " : ""}
-        사진의 줄인 사본이 AI(Google Gemini)로 보내집니다. 초안은 참고용이니 실제 상태와 다르면 고쳐서 등록하세요. AI
+        사진의 줄인 사본이 AI(Google Gemini)로 보내집니다. AI는 사용 상태·하자 칸만 채우고, 개봉 여부는 직접 선택해야 합니다. 초안은 참고용이니 실제 상태와 다르면 고쳐서 등록하세요. AI
         초안을 받은 기록에는 &quot;AI 초안 활용&quot; 표시가 남습니다.
       </p>
-      <TxStatus state={tx} successMessage="AI 초안을 입력 칸에 채웠습니다. 내용을 확인하세요." />
+      <TxStatus state={tx} successMessage="AI 초안을 사용 상태·하자 칸에 채웠습니다. 내용을 확인하고, 개봉 여부는 직접 선택하세요." />
     </div>
   );
 }

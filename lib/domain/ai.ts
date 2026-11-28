@@ -1,6 +1,10 @@
 /**
  * AI 보조 기능 공용 값 (docs/architecture.md 6.7, proposal.md D14). 서버·브라우저 공용, 외부 의존 없음.
  */
+import type { ConditionInput } from "./upload";
+
+/** AI 상태 초안: 사용 상태·하자만. 개봉 여부는 판매자가 직접 선택한다 (D14) */
+export type ConditionDraft = Pick<ConditionInput, "condition" | "defects">;
 
 /**
  * AI 초안용 사진은 브라우저에서 긴 변을 이 크기(px) 이하로 줄여 보낸다.

@@ -20,9 +20,10 @@ import { checkListingPrice, formatBps, listingPriceRule, type ListingPriceRule }
 import type { Token } from "@/lib/domain/types";
 import {
   MAX_CONDITION_IMAGES,
+  checkConditionForm,
   checkConditionInput,
   checkImageCount,
-  type ConditionInput,
+  type ConditionFormValue,
 } from "@/lib/domain/upload";
 import { list, listedListingId } from "@/lib/tx/escrow";
 import { approveEscrowIfNeeded } from "@/lib/tx/nft";
@@ -98,7 +99,8 @@ function Form({
 }) {
   const tx = useTx();
   const [priceText, setPriceText] = useState("");
-  const [condition, setCondition] = useState<ConditionInput>({ sealed: true, condition: "", defects: "" });
+  // 개봉 여부는 미리 선택하지 않는다. 판매자가 직접 골라야 등록할 수 있다 (D14)
+  const [condition, setCondition] = useState<ConditionFormValue>({ sealed: null, condition: "", defects: "" });
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   // AI 초안을 한 번이라도 받아 채웠으면 기록에 표시한다 (판매자 자기 신고, 6.7 A2)
   const [aiAssisted, setAiAssisted] = useState(false);
@@ -111,7 +113,7 @@ function Form({
   const price = rule.kind === "primary" ? rule.price : parseEth(priceText);
   const priceError =
     price === null ? "ETH 금액을 숫자로 입력하세요 (예: 0.05)." : checkListingPrice(rule, price);
-  const conditionError = primary ? null : checkConditionInput(condition);
+  const conditionError = primary ? null : checkConditionForm(condition);
   const photoError = primary ? null : checkImageCount(photos.length);
 
   async function onSubmit(event: FormEvent) {
@@ -153,7 +155,7 @@ function Form({
               const signed = auth as SignedUploadAuth;
               conditionCid = primary
                 ? await uploadPrimaryCondition(signed)
-                : await uploadCondition(condition, imageCids, signed, aiAssisted);
+                : await uploadCondition({ ...condition, sealed: condition.sealed as boolean }, imageCids, signed, aiAssisted);
               uploaded.current = { key: inputKey, cid: conditionCid };
               return null;
             },
@@ -226,7 +228,8 @@ function Form({
             photos={photos}
             disabled={tx.busy}
             onDraft={(draft) => {
-              setCondition(draft);
+              // 사용 상태·하자만 채운다. 개봉 여부는 판매자가 고른 값을 그대로 둔다 (D14)
+              setCondition((c) => ({ ...c, condition: draft.condition, defects: draft.defects }));
               setAiAssisted(true);
             }}
           />
@@ -234,7 +237,8 @@ function Form({
           <ConditionFields
             value={condition}
             onChange={setCondition}
-            error={submitted ? conditionError : null}
+            error={submitted ? checkConditionInput({ ...condition, sealed: condition.sealed ?? false }) : null}
+            sealedError={submitted && condition.sealed === null ? "개봉 여부를 직접 선택하세요." : null}
             disabled={tx.busy}
           />
           {aiAssisted && (

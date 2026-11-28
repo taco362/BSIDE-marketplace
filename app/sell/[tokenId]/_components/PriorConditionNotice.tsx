@@ -3,7 +3,7 @@
 import { use } from "react";
 import { ConditionHistoryWarningList } from "@/components/condition/ConditionHistoryWarningList";
 import { conditionHistoryWarnings, type PriorCondition } from "@/lib/domain/conditionHistory";
-import type { ConditionInput } from "@/lib/domain/upload";
+import type { ConditionFormValue } from "@/lib/domain/upload";
 
 /**
  * 판매자 안내 (architecture.md 6.7 A1, D14): 입력 중인 상태가 이전 완료 거래 기록과 맞지 않으면 알린다.
@@ -13,10 +13,11 @@ export function PriorConditionNotice({
   value,
   prior,
 }: {
-  value: ConditionInput;
+  value: ConditionFormValue;
   prior: Promise<PriorCondition[]>;
 }) {
-  const warnings = conditionHistoryWarnings(value, use(prior));
+  // 개봉 여부를 아직 고르지 않았으면 개봉 여부 비교는 하지 않는다 (하자 비교만)
+  const warnings = conditionHistoryWarnings({ sealed: value.sealed === true, defects: value.defects }, use(prior));
   if (warnings.length === 0) return null;
   return (
     <ConditionHistoryWarningList
