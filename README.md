@@ -86,5 +86,6 @@ npm run dev
 
 ```powershell
 cd contracts; npm test; npm run typecheck   # 컨트랙트
+npm test                                    # 도메인 함수 단위 테스트 (루트, tests/)
 npm run lint; npm run build                 # 프론트엔드 (루트)
 ```
