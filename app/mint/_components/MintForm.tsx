@@ -5,10 +5,9 @@ import Link from "next/link";
 import { TxStatus } from "@/components/tx/TxStatus";
 import { FormField, INPUT_CLASS, SubmitButton } from "@/components/ui/FormField";
 import { PhotoPicker, type SelectedPhoto } from "@/components/upload/PhotoPicker";
-import { NetworkGuard } from "@/components/wallet/NetworkGuard";
 import { useTx, type TxStep } from "@/hooks/useTx";
 import { signUploadAuth, uploadImage, uploadMetadata, type SignedUploadAuth } from "@/lib/api/upload";
-import { formatEth, isSameAddress, parseEth } from "@/lib/domain/format";
+import { formatEth, parseEth } from "@/lib/domain/format";
 import { POLICY_BPS_RANGE, POLICY_LABELS, describePolicy, formatBps, percentToBps } from "@/lib/domain/policy";
 import { POLICIES, type Policy } from "@/lib/domain/types";
 import {
@@ -27,25 +26,11 @@ const POLICY_HINTS: Record<Policy, string> = {
 };
 
 /**
- * 발행 폼 (D13). 연결된 계정에게 발행된다.
+ * 발행 폼 (D13). 연결된 계정에게 발행된다. 승인된 아티스트만 보이도록 페이지가 RoleGate로 감싼다 (architecture.md 6.5).
  * 업로드 확인 서명 → 대표 이미지 업로드 → 메타데이터 업로드(서버가 Pinata에 올림) → mint(ipfs://<메타데이터 CID>)
  */
-export function MintForm({ verifiedArtists }: { verifiedArtists: string[] }) {
-  return (
-    <NetworkGuard>
-      {(account) => (
-        <div className="flex flex-col gap-4">
-          {!verifiedArtists.some((a) => isSameAddress(a, account)) && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              연결된 계정은 승인된 아티스트 목록에 없습니다. 관리자에게 아티스트 등록을 요청하세요. 승인되지 않은 계정의
-              발행은 컨트랙트가 거부합니다.
-            </p>
-          )}
-          <Form />
-        </div>
-      )}
-    </NetworkGuard>
-  );
+export function MintForm() {
+  return <Form />;
 }
 
 function Form() {

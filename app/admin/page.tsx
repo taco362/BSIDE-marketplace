@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { RoleGate } from "@/components/wallet/RoleGate";
 import { getMarketReader } from "@/lib/data";
 import { ArtistTable } from "./_components/ArtistTable";
 import { RegisterArtistForm } from "./_components/RegisterArtistForm";
@@ -19,16 +20,19 @@ async function AdminContent() {
   const reader = getMarketReader();
   const [admin, artists] = await Promise.all([reader.getAdmin(), reader.getArtists()]);
 
+  // 관리자 지갑이 연결됐을 때만 내용을 보인다 (화면 표시용, 관리 권한은 컨트랙트가 확인)
   return (
-    <>
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">아티스트 등록 · 활동명 변경</h2>
-        <RegisterArtistForm admin={admin} />
-      </section>
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">등록된 아티스트</h2>
-        <ArtistTable artists={artists} />
-      </section>
-    </>
+    <RoleGate allowed={[admin]} deniedMessage="관리자 화면은 관리자 지갑으로만 이용할 수 있습니다.">
+      <div className="flex flex-col gap-8">
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">아티스트 등록 · 활동명 변경</h2>
+          <RegisterArtistForm />
+        </section>
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">등록된 아티스트</h2>
+          <ArtistTable artists={artists} />
+        </section>
+      </div>
+    </RoleGate>
   );
 }

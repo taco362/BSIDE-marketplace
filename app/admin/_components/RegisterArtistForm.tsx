@@ -3,28 +3,16 @@
 import { useState, type FormEvent } from "react";
 import { TxStatus } from "@/components/tx/TxStatus";
 import { FormField, INPUT_CLASS, SubmitButton } from "@/components/ui/FormField";
-import { NetworkGuard } from "@/components/wallet/NetworkGuard";
 import { useTx } from "@/hooks/useTx";
-import { isSameAddress } from "@/lib/domain/format";
 import { MAX_ARTIST_NAME_BYTES, checkAddress, checkArtistName } from "@/lib/domain/validation";
 import { registerArtist } from "@/lib/tx/nft";
 
-/** 아티스트 승인 + 활동명 등록. 이미 등록된 주소를 다시 등록하면 활동명만 바뀐다 (D7) */
-export function RegisterArtistForm({ admin }: { admin: string }) {
-  return (
-    <NetworkGuard>
-      {(account) => (
-        <div className="flex flex-col gap-4">
-          {!isSameAddress(account, admin) && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              연결된 계정이 관리자 계정이 아닙니다. 관리자 계정으로 전환하지 않으면 컨트랙트가 거부합니다.
-            </p>
-          )}
-          <Form />
-        </div>
-      )}
-    </NetworkGuard>
-  );
+/**
+ * 아티스트 승인 + 활동명 등록. 이미 등록된 주소를 다시 등록하면 활동명만 바뀐다 (D7)
+ * 관리자 지갑일 때만 보이도록 페이지가 RoleGate로 감싼다 (architecture.md 6.5). 권한은 컨트랙트가 확인한다.
+ */
+export function RegisterArtistForm() {
+  return <Form />;
 }
 
 function Form() {
