@@ -7,7 +7,8 @@
 ## 현재 상태
 
 - **단계**: Phase 1 완료 (7단계 Sepolia 배포·시연 확인, 2026-11-27). Phase 2 업로드 U1~U4 완료
-- **다음 작업**: Phase 2 나머지(판매자 환불·분쟁 제기 화면, 관리자 분쟁 중재 화면, 예외 상황 테스트) — 사용자 확인 후 시작
+- **다음 작업**: A3 토큰 페이지 버튼·요약 화면 확인. 이후 Phase 2 나머지(판매자 환불·분쟁 화면 등)는 사용자 결정 대기 Phase 2 나머지(판매자 환불·분쟁 제기 화면, 관리자 분쟁 중재 화면, 예외 상황 테스트)와의 순서는 사용자 결정 대기
+- **진행 중**: AI 보조 기능 (D14, 교수님 피드백 반영). A1 완료 (사용자 화면 확인), A2 완료, A3 실제 AI 호출 확인·버튼 화면 미확인 (브랜치 `feature/ai-assist`)
 - **시연 주소**: https://bside-marketplace.vercel.app (Sepolia)
 - **저장소 상태**: `contracts/` Hardhat 3 프로젝트 (컨트랙트 2종, 배포·발행 스크립트) + `lib/contracts/` (ABI, 로컬 배포 정보) + 프론트 조회 화면 (목록, 거래 상세, 토큰 이력)과 지갑 연결 + 거래 화면 (관리자, 발행, 판매 등록, 구매·수령 승인·정산 청구·등록 취소, 내 거래·출금)
 
@@ -245,6 +246,35 @@
 | 관리자 분쟁 중재 화면 | ☐ 대기 |
 | 예외 상황 테스트 보강 | ☐ 대기 |
 
+### AI 보조 기능 (D14, 2026-11-27 추가)
+
+교수님 피드백("AI 접목")에 따라 추가. 사용자 결정: ① AI 상태 기록 작성 보조 + ② AI 거래 이력 요약 + 사용자 제안 상태 기록 모순 경고. 컨트랙트 변경 없음. 설계는 architecture.md 6.7.
+
+| 단계 | 작업 | 완료 기준 | 상태 |
+|---|---|---|---|
+| A1 | 상태 기록 모순 경고 (규칙 기반): 거래 상세·토큰 페이지 경고, 판매 등록 화면 판매자 안내 | 규칙 함수 확인, 모순 시나리오에서 화면 경고 확인 | ☑ 완료 |
+| A2 | AI 상태 기록 작성 보조 (사진 → 초안, `aiAssisted` 표시). Gemini `gemini-3.5-flash-lite` 무료 등급 | 거부 테스트, 실제 API 호출 1건, 배지 표시 | ☑ 완료 (사용자 화면 확인) |
+| A3 | AI 거래 이력 요약 (토큰 페이지) | 요약 숫자가 사실 목록과 일치, 경고 언급 | ◐ 실제 AI 호출 확인(Sepolia 토큰 #1), 버튼 화면 미확인 |
+
+### A1 결과 (2026-11-27)
+
+- 문서: proposal.md D14·FR-03·FR-04·6장, architecture.md 6.7·3장 트리·7장 환경 변수, `.env.example`에 `ANTHROPIC_API_KEY` 이름 추가 (A2부터 사용)
+- 구현
+  - `lib/domain/conditionHistory.ts`: 비교 대상(앞선 COMPLETED 거래, 거래와 맞는 재판매 기록만), 규칙 2개(개봉 → 미개봉 강한 경고, 직전 하자 → "없음" 주의)
+  - `lib/data/ipfs/conditionRecords.ts`에 `getPriorConditions`
+  - `components/condition/ConditionHistoryWarnings.tsx`(비교·표시, async), `ConditionHistoryWarningList.tsx`(목록 표시)
+  - 거래 상세: "거래하기" 섹션 위에 경고 표시 (계획의 ListingInfo 근처 대신 구매 버튼 근처로 정함)
+  - 토큰 페이지: 거래 이력의 판매 등록 항목마다 상태 기록 위에 경고 표시
+  - 판매 등록: `PriorConditionNotice`(서버가 넘긴 Promise를 `use()`로 기다림)가 입력 중인 값 기준으로 안내. 등록은 막지 않음
+- 검증
+  - `npx tsc --noEmit`, `npm run lint`, `npm run build` 통과
+  - 규칙 함수 10건 통과 (scratchpad 스크립트, 저장소에 포함하지 않음): 비교 대상 필터·정렬, primary·invalid·unavailable·거래 불일치 기록 제외, 개봉 → 미개봉 경고, 중간 미개봉 기록이 있어도 경고, 경고 없는 조합 3가지, 하자 빈칸·공백 = 없음, 하자는 직전 기록만 비교, 하자 변경은 경고 없음, 두 경고 동시·긴 문구 축약, 비교 대상 없음
+  - dev 서버(Sepolia 데이터)에서 `/listings/1`·`/tokens/1`·`/sell/1`·`/` 200 응답, 서버 로그 오류 없음
+- 사용자 화면 확인 (2026-11-27): 모순 시나리오에서 판매 등록 안내·거래 상세·토큰 페이지 경고 표시 확인 (사용자 보고 "확인 했어요")
+- 비고 (숨기지 않음)
+  - 화면 확인은 사용자 보고만으로 완료 처리. 확인에 쓴 네트워크·거래 번호는 기록하지 않음
+  - Windows에서 dev 서버 종료 후 프로세스가 포트를 계속 점유해 직접 종료함 (4단계와 같은 현상)
+
 ### U1 결과 (2026-11-26)
 
 - 설계: architecture.md 6.3 (업로드 확인 서명 형식·유효 시간·권한, `POST /api/ipfs/images`, 모듈 구성)
@@ -334,6 +364,56 @@
   - 상태 기록은 페이지 요청마다 게이트웨이에서 다시 읽는다 (캐시 없음). 거래가 많은 토큰은 느릴 수 있으나 기록마다 따로 표시되어 나머지 화면은 먼저 보임
 - 사용자 화면 확인: 토큰 이력·거래 상세의 상태 기록 표시 정상 (사용자 보고 "화면 괜찮음")
 
+### A2 결과 (2026-11-28, 실제 AI 호출 대기)
+
+- 결정 (사용자): AI는 Google Gemini Flash-Lite, 최대한 비용이 들지 않게. 공식 모델 목록(2026-11-28)의 최신 안정판 `gemini-3.5-flash-lite` 사용, 결제를 연결하지 않은 무료 등급 키 전제 (architecture.md 6.7 비용 최소화). 환경 변수 이름을 `ANTHROPIC_API_KEY` → `GEMINI_API_KEY`로 변경
+- 구현 (세부 사항은 architecture.md 6.7 A2)
+  - 서버: `lib/ai/gemini.ts`(REST 직접 호출, SDK 없음, 생각 최소화·출력 상한·형식 고정 JSON, 키는 헤더), `lib/ai/conditionDraft.ts`(프롬프트·응답 확인), `lib/ai/errors.ts`, `app/api/ai/condition-draft/route.ts`(업로드 확인 서명·소유자 확인 재사용, 최초 판매 거부)
+  - 브라우저: `lib/media/downscale.ts`(긴 변 768px JPEG 사본), `lib/api/ai.ts`, `AiDraftButton`(서명 → 초안 → 입력 칸 채우기). 판매 등록 화면 순서를 사진 → AI 초안 → 상태 입력으로 변경
+  - `aiAssisted`: 상태 기록 선택 필드(true일 때만 기록), `parseConditionRecord`가 읽음, `ConditionRecordView`에 "AI 초안 활용" 배지
+  - 공용: `lib/domain/ai.ts`(사진 크기·요청 크기·글자 수 상한)
+- 검증
+  - `npx tsc --noEmit`, `npm run lint`, `npm run build` 통과
+  - API 검증 13건 통과 (새 로컬 노드 + dev 서버, 키 없이 실행, scratchpad 스크립트. 저장소에 포함하지 않음): multipart 아님 400, 4MB 초과 413, 서명 없음 401, 주소 위조 401, 만료 401, metadata 용도 서명 401, 소유자 아님 403, 최초 판매 토큰 400, 사진 0장·6장 400, PNG로 위장한 텍스트 415, 정상 요청 + 키 없음 500(설정 안내), 상태 기록 API의 `aiAssisted` 형식 오류 400(업로드 전 거부)
+  - 첫 실행에서 metadata 용도 서명 케이스 1건 실패 → 검증 스크립트가 tokenId를 두 번 넣은 스크립트 오류. 수정 후 재실행 통과 (앱 코드 변경 없음)
+  - `aiAssisted` 해석 5건 통과: true만 표시, false·문자열·없음·type 없는 기존 기록은 표시 안 함
+  - 검증 후 노드·서버 종료(남은 프로세스 직접 종료), `lib/contracts`는 git의 Sepolia 값으로 복구
+- 미검증 (숨기지 않음)
+  - **실제 Gemini 사진 초안 호출**: 요청 형식·헤더 인증은 A3 실제 호출로 확인됨(2026-11-28). 사진 입력(`inlineData`)과 초안 품질은 미확인 — 로컬 검증용 dev 서버를 띄우려 했으나 사용자의 dev 서버(포트 3000)가 실행 중이라 Next.js가 두 번째 dev 서버를 거부함. 이 시도 중 로컬 배포가 `deployment.json`을 덮어썼다가 즉시 Sepolia 값으로 복구함
+  - 브라우저 사진 축소(`createImageBitmap`·canvas), AI 초안 버튼·배지 화면 표시, MetaMask 서명 흐름
+  - 무료 등급 일일 한도는 Google이 바꿀 수 있어 확정하지 않음 (AI Studio rate limit 화면에서 확인)
+
+### A2 보완 (2026-11-28, 사용자 화면 확인 후 요청)
+
+- 사용자 확인: 실제 사진으로 AI 초안을 받아 봄. 초안이 판매자가 아니라 중간 관리자 말투였고, "사진으로 개봉 여부를 확인하기 어려움"이 대부분 상품에 나올 수 있음
+- 결정 (사용자): ① 판매자 말투로 작성 ② 개봉 여부는 AI가 판단하지 않고 판매자가 직접 선택. AI 초안을 그대로 제출해 미개봉 상품이 개봉으로 올라가는 문제 방지 (proposal.md D14 수정)
+- 변경
+  - `lib/ai/conditionDraft.ts`: 판매자 말투 프롬프트(예시 문장 포함), 관찰자 표현 금지, 개봉 여부 언급 금지, 응답에서 `sealed` 제거 → `ConditionDraft { condition, defects }` (`lib/domain/ai.ts`)
+  - 판매 등록 화면: 개봉 여부 기본 선택 제거(`ConditionFormValue`, `checkConditionForm`), 선택하지 않으면 개봉 여부 칸 아래에 "개봉 여부를 직접 선택하세요." 표시. AI 초안은 사용 상태·하자만 채움. 안내 문구 갱신
+  - 모순 안내(A1)는 개봉 여부를 고르기 전에는 하자만 비교
+- 검증: `npx tsc --noEmit`, `npm run lint`, `npm run build` 통과
+- 사용자 화면 확인 (2026-11-28): 바뀐 초안 말투, 개봉 여부 직접 선택 동작 확인 (사용자 보고 "확인했습니다")
+
+### A3 결과 (2026-11-28, 실제 AI 호출 대기)
+
+- 구현 (세부 사항은 architecture.md 6.7 A3)
+  - `lib/domain/historyFacts.ts`(사실 목록·캐시 키·`unknownNumbers`), `lib/ai/tokenSummary.ts`(프롬프트, 없는 숫자 거부, 경고 누락 시 정해진 문장 덧붙임), `lib/ai/summaryCache.ts`, `lib/ai/rateLimit.ts`(1분당 10회), `app/api/ai/token-summary/route.ts`, `TokenAiSummary`(토큰 페이지 "거래 이력 요약" 섹션)
+  - `AiError`에 `busy`(우리 서버 호출 제한) 추가, AI API 오류 응답에 블록체인 조회 실패(502) 추가
+- 검증
+  - `npx tsc --noEmit`, `npm run lint`, `npm run build` 통과
+  - 사실 목록·숫자 확인 8건 통과 (scratchpad): 건수 집계, 완료 가격 변화, 최초 판매 상태, A1 경고 2개·AI 초안 표시 포함, 읽지 못한 기록 표시, 경고 없음, 캐시 키(같은 사실 = 같은 키, 상태 변경 시 다른 키), 없는 숫자 거부·작은 정수 허용
+  - API 9건 통과 (새 로컬 노드 + dev 서버, 키 없이): JSON 아님·tokenId 0·문자열 400, 1KB 초과 413, 없는 NFT 400, 거래 없는 NFT는 AI 없이 고정 문장(200, `ai: false`), 키 없음 10회 500, 11번째 429, 제한 중에도 거래 없는 NFT는 200. `/tokens/1` 200
+  - 검증 후 노드·서버 종료(남은 프로세스 직접 종료), `lib/contracts` Sepolia 값으로 복구
+- 실제 Gemini 호출 (2026-11-28, 사용자가 실행 중인 dev 서버(포트 3000, Sepolia 데이터)에 API 직접 요청, 키는 서버가 `.env.local`에서 읽음)
+  - 토큰 #1: 200, 약 8.9초. 요약 5문장, 가격(0.005 ETH)은 사실 목록 표기 그대로, A1 경고(거래 #2 개봉 → 거래 #4 미개봉)와 "구매 전에 판매자에게 확인" 안내 포함. 숫자 확인 통과
+  - **A2에서 미확인이던 요청 형식(`responseJsonSchema`, `thinkingLevel: MINIMAL`, `x-goog-api-key` 헤더)이 Gemini에서 받아들여짐을 확인**
+  - 같은 요청 2회 더: 같은 문장 반환(캐시 사용으로 추정). 응답 약 6초는 대부분 블록체인·IPFS 조회 시간 (`/tokens/1` 페이지 자체가 약 4.8초)
+  - 문장 품질 메모: "완료된 거래 가격은 최초 0.005 ETH에서 0.005 ETH로"처럼 같은 가격을 변화처럼 쓰는 어색한 표현이 있음 (사실과는 일치)
+- 미검증 (숨기지 않음)
+  - 숫자 확인으로 정상 요약이 거부되는 빈도, 토큰 페이지 버튼·요약 화면 표시
+  - 캐시 적중은 응답 문장이 같다는 것으로만 판단함 (로그 없음)
+  - 경고 누락 판정은 요약에 "확인"이라는 단어가 있는지만 본다 (단순 규칙)
+
 ## Phase 3 — 확장 기능
 
 | 작업 | 상태 |
@@ -378,3 +458,7 @@
 | 2026-11-27 | 7단계 시작: Sepolia `confirmPeriod` 300초 결정(미결정 사항 해소), 구매 시점 기준 기한은 MVP 단순화로 명시, 배송 완료 기준 기한을 향후 개선 사항에 추가. `deploy:sepolia` 스크립트 추가 |
 | 2026-11-27 | Sepolia 배포(BSideNFT `0xAC41…93eF`, BSideEscrow `0xe696…8c60`) 및 온체인 설정 확인. 서버 조회 RPC를 publicnode로 전환. Vercel 시연 배포(https://bside-marketplace.vercel.app) 응답 확인 |
 | 2026-11-27 | Phase 1 · 7단계 완료: 사용자가 Vercel 링크에서 Sepolia 흐름 A·B 시연 확인. Phase 1 전 단계 완료 |
+| 2026-11-27 | AI 보조 기능 결정 (D14, 교수님 피드백): 모순 경고(규칙 기반)·AI 상태 초안·AI 이력 요약. A1 모순 경고 완료 (규칙 10건 통과, 사용자 화면 확인) |
+| 2026-11-28 | AI 제공자 결정: Gemini `gemini-3.5-flash-lite` 무료 등급(비용 최소화), `GEMINI_API_KEY`. A2 AI 상태 초안 구현, API 거부 13건 통과. 실제 AI 호출은 키 등록 후 확인 |
+| 2026-11-28 | A2 보완(사용자 결정): AI 초안 판매자 말투, 개봉 여부는 AI가 판단하지 않고 판매자가 직접 선택(기본 선택 없음). D14 수정 |
+| 2026-11-28 | A3 AI 거래 이력 요약 구현: 사실 목록은 코드 계산, 없는 숫자 거부, 경고 누락 보완, 메모리 캐시·1분 10회 제한. 단위 8건·API 9건 통과. 실제 AI 호출은 키 등록 후 확인 |

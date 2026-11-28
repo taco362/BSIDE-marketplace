@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Suspense, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { TxStatus } from "@/components/tx/TxStatus";
 import { FormField, INPUT_CLASS, SubmitButton } from "@/components/ui/FormField";
@@ -14,18 +14,22 @@ import {
   uploadPrimaryCondition,
   type SignedUploadAuth,
 } from "@/lib/api/upload";
+import type { PriorCondition } from "@/lib/domain/conditionHistory";
 import { formatEth, isSameAddress, parseEth } from "@/lib/domain/format";
 import { checkListingPrice, formatBps, listingPriceRule, type ListingPriceRule } from "@/lib/domain/policy";
 import type { Token } from "@/lib/domain/types";
 import {
   MAX_CONDITION_IMAGES,
+  checkConditionForm,
   checkConditionInput,
   checkImageCount,
-  type ConditionInput,
+  type ConditionFormValue,
 } from "@/lib/domain/upload";
 import { list, listedListingId } from "@/lib/tx/escrow";
 import { approveEscrowIfNeeded } from "@/lib/tx/nft";
+import { AiDraftButton } from "./AiDraftButton";
 import { ConditionFields } from "./ConditionFields";
+import { PriorConditionNotice } from "./PriorConditionNotice";
 
 /**
  * 판매 등록 (architecture.md 6.2, 6.3)
@@ -33,7 +37,14 @@ import { ConditionFields } from "./ConditionFields";
  * 최초 판매는 사진·상태 입력 없이 서명 → 서버가 상태 기록 작성(대표 이미지 사용, D11) → approve → list
  * 가격 규칙은 연결된 계정(판매자) 기준으로 미리 안내하고, 최종 검증은 컨트랙트가 한다.
  */
-export function SellForm({ token }: { token: Token }) {
+export function SellForm({
+  token,
+  priorConditions,
+}: {
+  token: Token;
+  /** 이전 완료 거래의 상태 기록 (모순 안내용, 6.7 A1). 서버가 기다리지 않고 넘긴다 */
+  priorConditions: Promise<PriorCondition[]>;
+}) {
   // 등록 후 router.refresh()로 NFT가 에스크로 보관 상태가 되어도 결과를 계속 보여준다.
   // Cache Components는 방문했던 화면의 상태를 보존하므로(<Activity>), 완료 표시는 현재 서버 상태(에스크로 보관 중)일 때만 쓴다.
   // 등록 취소 후 이 화면으로 돌아오면 다시 폼이 보인다.
@@ -64,6 +75,7 @@ export function SellForm({ token }: { token: Token }) {
             token={token}
             rule={listingPriceRule(token, account)}
             sellerIsArtist={isSameAddress(account, token.artist)}
+            priorConditions={priorConditions}
             onListed={setListingId}
           />
         );
@@ -76,17 +88,22 @@ function Form({
   token,
   rule,
   sellerIsArtist,
+  priorConditions,
   onListed,
 }: {
   token: Token;
   rule: ListingPriceRule;
   sellerIsArtist: boolean;
+  priorConditions: Promise<PriorCondition[]>;
   onListed: (listingId: number) => void;
 }) {
   const tx = useTx();
   const [priceText, setPriceText] = useState("");
-  const [condition, setCondition] = useState<ConditionInput>({ sealed: true, condition: "", defects: "" });
+  // 개봉 여부는 미리 선택하지 않는다. 판매자가 직접 골라야 등록할 수 있다 (D14)
+  const [condition, setCondition] = useState<ConditionFormValue>({ sealed: null, condition: "", defects: "" });
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
+  // AI 초안을 한 번이라도 받아 채웠으면 기록에 표시한다 (판매자 자기 신고, 6.7 A2)
+  const [aiAssisted, setAiAssisted] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   // 업로드는 끝났는데 승인·등록 서명을 거부한 경우, 입력이 같으면 다시 올리지 않고 같은 상태 기록 CID를 쓴다
   const uploaded = useRef<{ key: string; cid: string } | null>(null);
@@ -96,7 +113,7 @@ function Form({
   const price = rule.kind === "primary" ? rule.price : parseEth(priceText);
   const priceError =
     price === null ? "ETH 금액을 숫자로 입력하세요 (예: 0.05)." : checkListingPrice(rule, price);
-  const conditionError = primary ? null : checkConditionInput(condition);
+  const conditionError = primary ? null : checkConditionForm(condition);
   const photoError = primary ? null : checkImageCount(photos.length);
 
   async function onSubmit(event: FormEvent) {
@@ -104,7 +121,7 @@ function Form({
     setSubmitted(true);
     if (priceError || conditionError || photoError || price === null) return;
 
-    const inputKey = primary ? "primary" : JSON.stringify([condition, photos.map((p) => p.id)]);
+    const inputKey = primary ? "primary" : JSON.stringify([condition, photos.map((p) => p.id), aiAssisted]);
     let conditionCid = uploaded.current?.key === inputKey ? uploaded.current.cid : null;
     let auth: SignedUploadAuth | null = null;
     const imageCids: string[] = [];
@@ -138,7 +155,7 @@ function Form({
               const signed = auth as SignedUploadAuth;
               conditionCid = primary
                 ? await uploadPrimaryCondition(signed)
-                : await uploadCondition(condition, imageCids, signed);
+                : await uploadCondition({ ...condition, sealed: condition.sealed as boolean }, imageCids, signed, aiAssisted);
               uploaded.current = { key: inputKey, cid: conditionCid };
               return null;
             },
@@ -194,13 +211,6 @@ function Form({
         </div>
       ) : (
         <>
-          <ConditionFields
-            value={condition}
-            onChange={setCondition}
-            error={submitted ? conditionError : null}
-            disabled={tx.busy}
-          />
-
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">상품 사진</span>
             <PhotoPicker
@@ -212,6 +222,33 @@ function Form({
             />
             {submitted && photoError && <p className="text-xs text-red-600">{photoError}</p>}
           </div>
+
+          <AiDraftButton
+            tokenId={token.tokenId}
+            photos={photos}
+            disabled={tx.busy}
+            onDraft={(draft) => {
+              // 사용 상태·하자만 채운다. 개봉 여부는 판매자가 고른 값을 그대로 둔다 (D14)
+              setCondition((c) => ({ ...c, condition: draft.condition, defects: draft.defects }));
+              setAiAssisted(true);
+            }}
+          />
+
+          <ConditionFields
+            value={condition}
+            onChange={setCondition}
+            error={submitted ? checkConditionInput({ ...condition, sealed: condition.sealed ?? false }) : null}
+            sealedError={submitted && condition.sealed === null ? "개봉 여부를 직접 선택하세요." : null}
+            disabled={tx.busy}
+          />
+          {aiAssisted && (
+            <p className="text-xs text-violet-700 dark:text-violet-400">
+              AI 초안을 사용했습니다. 이 판매 건의 상태 기록에 &quot;AI 초안 활용&quot;으로 표시됩니다.
+            </p>
+          )}
+          <Suspense fallback={null}>
+            <PriorConditionNotice value={condition} prior={priorConditions} />
+          </Suspense>
         </>
       )}
 

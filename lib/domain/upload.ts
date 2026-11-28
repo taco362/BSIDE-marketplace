@@ -47,6 +47,8 @@ interface ConditionRecordBase {
 /** 재판매 상태 기록: 판매자가 상태·사진을 입력 (D11). type이 없는 기록(변경 전에 올린 것)도 재판매 기록이다 */
 export interface ResaleConditionRecord extends ConditionRecordBase, ConditionInput {
   type: "resale";
+  /** AI 초안을 활용해 작성했다고 판매자가 표시한 기록이면 true (D14, 자기 신고). 아니면 필드 없음 */
+  aiAssisted?: true;
 }
 
 /**
@@ -97,6 +99,17 @@ export function checkMetadataInput(input: MetadataInput): string | null {
 /** CID 형식 (v0: Qm…, v1: base32 b…) */
 export function isCid(value: unknown): value is string {
   return typeof value === "string" && /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{50,})$/.test(value);
+}
+
+/**
+ * 판매 등록 화면의 입력 상태. 개봉 여부는 미리 선택하지 않고 판매자가 직접 고른다 (D14, null = 아직 선택 안 함)
+ */
+export type ConditionFormValue = Omit<ConditionInput, "sealed"> & { sealed: boolean | null };
+
+/** 화면 입력 확인: 개봉 여부 선택 + 상태 입력 확인. 통과하면 null */
+export function checkConditionForm(value: ConditionFormValue): string | null {
+  if (value.sealed === null) return "개봉 여부를 선택하세요.";
+  return checkConditionInput({ ...value, sealed: value.sealed });
 }
 
 /** 상태 입력 확인. 문제가 있으면 안내 문구, 없으면 null */

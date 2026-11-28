@@ -1,25 +1,34 @@
 import { Suspense, type ReactNode } from "react";
 import { AccountLabel } from "@/components/account/AccountLabel";
+import { ConditionHistoryWarnings } from "@/components/condition/ConditionHistoryWarnings";
 import { ConditionRecordFallback, ConditionRecordView } from "@/components/condition/ConditionRecordView";
 import { accountOf } from "@/lib/domain/account";
+import type { PriorCondition } from "@/lib/domain/conditionHistory";
 import type { ConditionRecordResult } from "@/lib/domain/conditionRecord";
 import { CANCEL_REASON_LABELS, formatEth, formatTimestamp } from "@/lib/domain/format";
 import type { AccountDirectory, TokenHistory, TradeEvent } from "@/lib/domain/types";
 
 /** 상태 기록 CID → 조회 결과 (페이지가 만든다) */
 export type ConditionRecordMap = Record<string, Promise<ConditionRecordResult>>;
+/** 거래 ID → 모순 경고 비교 대상 (페이지가 만든다, 6.7 A1) */
+export type PriorConditionMap = Record<number, Promise<PriorCondition[]>>;
 
-/** NFT별 플랫폼 거래 이력 (에스크로 이벤트 타임라인). 판매 등록 항목에 그때의 상품 상태 기록을 함께 보인다 (U4) */
+/**
+ * NFT별 플랫폼 거래 이력 (에스크로 이벤트 타임라인).
+ * 판매 등록 항목에 그때의 상품 상태 기록(U4)과 이전 완료 거래 기록과의 모순 경고(A1)를 함께 보인다.
+ */
 export function TradeTimeline({
   tokenId,
   history,
   accounts,
   conditionRecords,
+  priorConditions,
 }: {
   tokenId: number;
   history: TokenHistory;
   accounts: AccountDirectory;
   conditionRecords: ConditionRecordMap;
+  priorConditions: PriorConditionMap;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -42,7 +51,15 @@ export function TradeTimeline({
               </p>
               <div className="text-sm text-zinc-600 dark:text-zinc-400">{describe(event, accounts)}</div>
               {event.kind === "Listed" && event.conditionCID in conditionRecords && (
-                <div className="mt-1 max-w-xl">
+                <div className="mt-1 flex max-w-xl flex-col gap-2">
+                  {event.listingId in priorConditions && (
+                    <Suspense fallback={null}>
+                      <ConditionHistoryWarnings
+                        record={conditionRecords[event.conditionCID]}
+                        prior={priorConditions[event.listingId]}
+                      />
+                    </Suspense>
+                  )}
                   <Suspense fallback={<ConditionRecordFallback />}>
                     <ConditionRecordView
                       cid={event.conditionCID}

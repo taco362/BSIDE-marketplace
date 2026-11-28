@@ -7,6 +7,8 @@ import "server-only";
  */
 import { cache } from "react";
 import { parseConditionRecord, type ConditionRecordResult } from "@/lib/domain/conditionRecord";
+import { priorCompletedListings, toPriorConditions, type PriorCondition } from "@/lib/domain/conditionHistory";
+import type { Listing } from "@/lib/domain/types";
 import { GatewayError, fetchIpfsJson } from "@/lib/ipfs/gateway";
 
 /** 같은 요청 안에서 같은 CID는 한 번만 읽는다 */
@@ -20,3 +22,13 @@ export const getConditionRecord = cache(async (cid: string): Promise<ConditionRe
     return { status: "unavailable" };
   }
 });
+
+/**
+ * 모순 경고(6.7 A1)의 비교 대상: beforeListingId보다 앞서 완료된 거래의 상태 기록.
+ * listings는 같은 토큰의 거래 목록이다. 읽지 못한 기록은 빠진다 (오류를 던지지 않음).
+ */
+export async function getPriorConditions(listings: Listing[], beforeListingId: number): Promise<PriorCondition[]> {
+  const prior = priorCompletedListings(listings, beforeListingId);
+  const results = await Promise.all(prior.map((listing) => getConditionRecord(listing.conditionCID)));
+  return toPriorConditions(prior.map((listing, i) => ({ listing, result: results[i] })));
+}

@@ -3,9 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListingStatusBadge } from "@/components/listing/ListingStatusBadge";
 import { TokenSummary } from "@/components/token/TokenSummary";
+import { ConditionHistoryWarnings } from "@/components/condition/ConditionHistoryWarnings";
 import { ConditionRecordFallback, ConditionRecordView } from "@/components/condition/ConditionRecordView";
 import { getMarketReader } from "@/lib/data";
-import { getConditionRecord } from "@/lib/data/ipfs/conditionRecords";
+import { getConditionRecord, getPriorConditions } from "@/lib/data/ipfs/conditionRecords";
 import { formatEth } from "@/lib/domain/format";
 import { ListingActions } from "./_components/ListingActions";
 import { ListingInfo } from "./_components/ListingInfo";
@@ -28,6 +29,11 @@ async function ListingDetail({ params }: Pick<PageProps<"/listings/[id]">, "para
   if (!item) notFound();
   const { listing, token } = item;
   const conditionRecord = getConditionRecord(listing.conditionCID);
+  // 모순 경고(6.7 A1)의 비교 대상. 기다리지 않고 넘긴다 (경고는 <Suspense> 안에서 따로 표시)
+  const priorConditions = reader
+    .getListingsByToken(token.tokenId)
+    .then((listings) => getPriorConditions(listings, listing.listingId))
+    .catch(() => []);
   const accounts = await reader.getAccounts([
     token.artist,
     listing.seller,
@@ -47,6 +53,11 @@ async function ListingDetail({ params }: Pick<PageProps<"/listings/[id]">, "para
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">거래하기</h2>
+        <div className="max-w-xl empty:hidden">
+          <Suspense fallback={null}>
+            <ConditionHistoryWarnings record={conditionRecord} prior={priorConditions} />
+          </Suspense>
+        </div>
         <ListingActions listing={listing} />
       </section>
 
