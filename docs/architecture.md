@@ -109,7 +109,7 @@ b-side/
 │  │  └─ index.ts                 # getMarketReader(): chainReader 반환 (구현체 선택 로직 없음)
 │  ├─ tx/                         # 쓰기 전용 (client), 컨트랙트별로 분리
 │  │  ├─ nft.ts                   # mint, approve(필요할 때만), 아티스트 등록·회수, 발행 영수증에서 토큰 ID 찾기
-│  │  ├─ escrow.ts                # list, cancelListing, buy, confirmReceipt, claimAfterTimeout, withdraw (refund·dispute·resolve는 Phase 2)
+│  │  ├─ escrow.ts                # list, cancelListing, buy, confirmReceipt, claimAfterTimeout, withdraw, refundBySeller, openDispute, resolveDispute
 │  │  └─ errors.ts                # 트랜잭션 오류·custom error → 한국어 안내 문구
 │  ├─ wallet/signer.ts            # MetaMask(EIP-1193) 계정·네트워크 확인·전환, 트랜잭션 서명용 Signer (client)
 │  ├─ api/upload.ts               # 업로드 확인 서명, /api/ipfs/* 호출 (client, 6.3)
@@ -488,17 +488,17 @@ seed 인자 (환경 변수): `METADATA_URI`(필수, `ipfs://<CID>`), `CONDITION_
 - Cache Components는 방문했던 화면을 `<Activity>`로 숨겨 클라이언트 상태를 보존한다(최근 3개 라우트). 따라서 거래 결과 표시는 컴포넌트 상태만으로 판단하지 않는다.
   - 판매 등록 완료 표시는 NFT가 실제로 에스크로에 있을 때(`token.inEscrow`)만 보여준다. 취소 후 다시 들어오면 폼이 보인다.
   - 거래 상세의 버튼 영역은 `key`(거래 상태 + 계정)로 묶는다. 상태가 바뀌면 새로 그려서, 이전 동작의 진행·완료 표시가 다음 동작 버튼에 남지 않게 한다.
-- 버튼 노출과 입력 확인(가격 규칙, 정책 수치 범위, CID 형식)은 화면 안내용이며 최종 검증은 컨트랙트가 한다. 되돌릴 수 없는 동작(발행, 구매, 수령 승인, 정산 청구, 등록 취소, 승인 회수)은 실행 전에 확인 창을 띄운다.
+- 버튼 노출과 입력 확인(가격 규칙, 정책 수치 범위, CID 형식)은 화면 안내용이며 최종 검증은 컨트랙트가 한다. 되돌릴 수 없는 동작(발행, 구매, 수령 승인, 정산 청구, 등록 취소, 판매자 환불, 분쟁 제기, 승인 회수)은 실행 전에 확인 창을 띄운다.
 
 | 화면 | 동작 (호출자) | 노출 조건 |
 |---|---|---|
 | `/admin` | 아티스트 등록·활동명 변경 `registerArtist`, 승인 회수 `revokeRole` (관리자) | 연결 계정이 `admin`일 때만 내용 표시, 아니면 안내만 (`RoleGate`, 6.5) |
 | `/mint` | 업로드 확인 서명 → 대표 이미지·메타데이터 업로드(6.3) → 발행 `mint` (아티스트) | 승인된 아티스트일 때만 폼 표시, 아니면 안내만 (`RoleGate`, 6.5) |
 | `/sell/[tokenId]` | 업로드 확인 서명 → 사진·상태 기록 업로드(6.3, 최초 판매는 서버 자동 작성) → `approve` → `list` (소유자) | 소유자일 때. 가격은 `listingPriceRule`: 최초 판매면 최초 판매가 고정, 정가 보호형 재판매면 상한 안내 |
-| `/listings/[id]` | LISTED: 구매 `buy`(판매자 외) / 등록 취소 `cancelListing`(판매자). LOCKED: 수령 승인 `confirmReceipt`(구매자) / 정산 청구 `claimAfterTimeout`(판매자, 기한 전에는 비활성) | 상태·역할별. DISPUTED·종료 상태는 안내 문구만 |
+| `/listings/[id]` | LISTED: 구매 `buy`(판매자 외) / 등록 취소 `cancelListing`(판매자). LOCKED: 수령 승인 `confirmReceipt`·분쟁 제기 `openDispute`(구매자, 분쟁은 기한 전에만 활성) / 정산 청구 `claimAfterTimeout`(판매자, 기한 전에는 비활성)·전액 환불 `refundBySeller`(판매자, 기한과 무관) | 상태·역할별. DISPUTED·종료 상태는 안내 문구만 |
 | `/my` | 출금 `withdraw` (본인) | 조회 계정과 연결 계정이 같을 때 |
 
-- 판매자 환불(`refundBySeller`), 분쟁 제기(`openDispute`), 중재(`resolveDispute`) 화면은 Phase 2에서 추가한다.
+- 판매자 환불(`refundBySeller`)과 분쟁 제기(`openDispute`)는 Phase 2에서 거래 상세에 추가했다. 분쟁 사유·증빙은 저장하지 않는다(DB 없음, 8.3). 중재(`resolveDispute`) 화면은 Phase 2 다음 단계에서 `/admin`에 추가한다.
 
 ### 6.3 IPFS 업로드 흐름 (Phase 2, proposal.md D11~D13)
 

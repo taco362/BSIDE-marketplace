@@ -15,7 +15,7 @@ type Args = ErrorDescription["args"];
 const REVERT_MESSAGES: Record<string, (args: Args) => string> = {
   // 공통 (OpenZeppelin)
   AccessControlUnauthorizedAccount: () =>
-    "이 계정에는 권한이 없습니다. 발행은 승인된 아티스트, 아티스트 등록·회수는 관리자 계정만 할 수 있습니다.",
+    "이 계정에는 권한이 없습니다. 발행은 승인된 아티스트, 아티스트 등록·회수와 분쟁 중재는 관리자 계정만 할 수 있습니다.",
   ReentrancyGuardReentrantCall: () => "중복 호출이 감지되어 거부되었습니다.",
   // BSideNFT
   EmptyTokenURI: () => "메타데이터 URI가 비어 있습니다.",
@@ -46,7 +46,7 @@ const REVERT_MESSAGES: Record<string, (args: Args) => string> = {
   PriceExceedsCap: (a) => `재판매 상한(${formatEth(a[0])})을 넘는 가격입니다 (입력 ${formatEth(a[1])}).`,
   SelfPurchase: () => "자신이 등록한 상품은 구매할 수 없습니다.",
   IncorrectPayment: (a) => `결제 금액이 판매 가격과 다릅니다 (가격 ${formatEth(a[0])}, 보낸 금액 ${formatEth(a[1])}).`,
-  DeadlinePassed: () => "수령 승인 기한이 지났습니다.",
+  DeadlinePassed: () => "수령 승인 기한이 지나 분쟁을 제기할 수 없습니다.",
   DeadlineNotReached: () => "수령 승인 기한이 아직 지나지 않았습니다. 기한 이후에 정산을 청구할 수 있습니다.",
   NothingToWithdraw: () => "출금할 금액이 없습니다.",
   WithdrawFailed: () => "송금에 실패했습니다. 대기액은 그대로 남아 있으니 다시 시도하세요.",
